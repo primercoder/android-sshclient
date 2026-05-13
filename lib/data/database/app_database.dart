@@ -41,6 +41,8 @@ class AppDatabase {
         display_name       TEXT NOT NULL DEFAULT '',
         current_ip         TEXT NOT NULL,
         port               INTEGER NOT NULL DEFAULT 22,
+        username           TEXT NOT NULL DEFAULT 'root',
+        password           TEXT NOT NULL DEFAULT '',
         mac_address        TEXT,
         host_key_fingerprint TEXT NOT NULL,
         host_key_algorithm   TEXT,

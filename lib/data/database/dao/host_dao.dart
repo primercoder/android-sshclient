@@ -32,15 +32,17 @@ class HostDao {
   void insertHost(Host host) {
     _db.execute('''
       INSERT OR REPLACE INTO hosts
-      (host_id, display_name, current_ip, port, mac_address,
+      (host_id, display_name, current_ip, port, username, password, mac_address,
        host_key_fingerprint, host_key_algorithm, ssh_banner,
        first_seen_at, last_seen_at, connection_count, notes)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ''', [
       host.hostId,
       host.displayName,
       host.currentIp,
       host.port,
+      host.username,
+      host.password,
       host.macAddress,
       host.hostKeyFingerprint,
       host.hostKeyAlgorithm,
@@ -55,14 +57,17 @@ class HostDao {
   void updateHost(Host host) {
     _db.execute('''
       UPDATE hosts SET
-        display_name = ?, current_ip = ?, port = ?, mac_address = ?,
-        host_key_fingerprint = ?, host_key_algorithm = ?, ssh_banner = ?,
-        first_seen_at = ?, last_seen_at = ?, connection_count = ?, notes = ?
+        display_name = ?, current_ip = ?, port = ?, username = ?, password = ?,
+        mac_address = ?, host_key_fingerprint = ?, host_key_algorithm = ?,
+        ssh_banner = ?, first_seen_at = ?, last_seen_at = ?,
+        connection_count = ?, notes = ?
       WHERE host_id = ?
     ''', [
       host.displayName,
       host.currentIp,
       host.port,
+      host.username,
+      host.password,
       host.macAddress,
       host.hostKeyFingerprint,
       host.hostKeyAlgorithm,
@@ -84,6 +89,8 @@ class HostDao {
     displayName: row['display_name'] as String? ?? '',
     currentIp: row['current_ip'] as String,
     port: row['port'] as int? ?? 22,
+    username: row['username'] as String? ?? 'root',
+    password: row['password'] as String? ?? '',
     macAddress: row['mac_address'] as String?,
     hostKeyFingerprint: row['host_key_fingerprint'] as String,
     hostKeyAlgorithm: row['host_key_algorithm'] as String?,

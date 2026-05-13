@@ -82,6 +82,11 @@ class LanScanner {
 
   Future<(String cidr, String ip, int bits)> detectCurrentNetwork() async {
     try {
+      final route = await _readProcNetRoute();
+      if (route != null) return route;
+    } catch (_) {}
+
+    try {
       final interfaces = await NetworkInterface.list();
       for (final interface in interfaces) {
         for (final addr in interface.addresses) {
@@ -93,6 +98,72 @@ class LanScanner {
       }
     } catch (_) {}
     return ('192.168.1.1/24', '192.168.1.1', 24);
+  }
+
+  Future<(String cidr, String ip, int bits)?> _readProcNetRoute() async {
+    try {
+      final file = File('/proc/net/route');
+      if (!await file.exists()) return null;
+
+      final lines = await file.readAsLines();
+      for (final line in lines.skip(1)) {
+        final parts = line.trim().split(RegExp(r'\s+'));
+        if (parts.length < 8) continue;
+
+        final destHex = parts[1];
+        final maskHex = parts[7];
+        final iface = parts[0];
+
+        if (destHex == '00000000' || iface.isEmpty) continue;
+
+        final destIp = _hexToIp(destHex);
+        if (destIp == null) continue;
+
+        final maskBits = _maskHexToBits(maskHex);
+        if (maskBits < 16 || maskBits > 30) continue;
+
+        final ip = await _findInterfaceIp(iface);
+        if (ip == null) continue;
+
+        return ('$ip/$maskBits', ip, maskBits);
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  String? _hexToIp(String hex) {
+    if (hex.length != 8) return null;
+    try {
+      final val = int.parse(hex, radix: 16);
+      return '${val & 0xFF}.${(val >> 8) & 0xFF}.${(val >> 16) & 0xFF}.${(val >> 24) & 0xFF}';
+    } catch (_) {
+      return null;
+    }
+  }
+
+  int _maskHexToBits(String hex) {
+    try {
+      final val = int.parse(hex, radix: 16);
+      return val.toRadixString(2).split('').where((c) => c == '1').length;
+    } catch (_) {
+      return 24;
+    }
+  }
+
+  Future<String?> _findInterfaceIp(String ifaceName) async {
+    try {
+      final interfaces = await NetworkInterface.list();
+      for (final iface in interfaces) {
+        if (iface.name == ifaceName) {
+          for (final addr in iface.addresses) {
+            if (addr.type == InternetAddressType.IPv4) {
+              return addr.address;
+            }
+          }
+        }
+      }
+    } catch (_) {}
+    return null;
   }
 
   bool isValidCidr(String cidr) {

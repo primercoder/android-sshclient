@@ -4,9 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:ssh_client/data/models/chat_message.dart';
 import 'package:ssh_client/data/models/host.dart';
 import 'package:ssh_client/data/models/direct_connect_info.dart';
-import 'package:ssh_client/data/models/ssh_connection_info.dart';
 import 'package:ssh_client/providers/chat_provider.dart';
-import 'package:ssh_client/providers/ssh_connection_provider.dart';
 import 'package:ssh_client/providers/providers.dart';
 import 'package:ssh_client/ui/widgets/chat/chat_bubble.dart';
 import 'package:ssh_client/ui/widgets/chat/chat_input_bar.dart';
@@ -37,7 +35,9 @@ class _ChatPageState extends ConsumerState<ChatPage> {
   final FocusNode _inputFocus = FocusNode();
   bool _showFilePanel = false;
   StreamSubscription<String>? _outputSubscription;
-  bool _connecting = false;
+  bool _connected = false;
+  bool _error = false;
+  String _errorMsg = '';
 
   String get _title {
     if (widget.host != null) {
@@ -63,66 +63,51 @@ class _ChatPageState extends ConsumerState<ChatPage> {
   void initState() {
     super.initState();
     if (!widget.readOnly) {
-      WidgetsBinding.instance.addPostFrameCallback((_) => _connect());
+      WidgetsBinding.instance.addPostFrameCallback((_) => _initSession());
     }
   }
 
-  Future<void> _connect() async {
-    if (_connecting) return;
-    _connecting = true;
-
+  Future<void> _initSession() async {
+    final sshService = ref.read(sshClientServiceProvider);
     final chat = ref.read(chatProvider.notifier);
 
     String hostId;
-    SshConnectionInfo connInfo;
-
     if (widget.host != null) {
       hostId = widget.host!.hostId;
-      connInfo = SshConnectionInfo(
-        host: widget.host!.currentIp,
-        port: widget.host!.port,
-        username: 'root',
-        password: '',
-      );
     } else if (widget.directConnectInfo != null) {
-      final info = widget.directConnectInfo!;
-      hostId = info.ip;
-      connInfo = SshConnectionInfo(
-        host: info.ip,
-        port: info.port,
-        username: info.username,
-        password: info.password,
-      );
+      hostId = widget.directConnectInfo!.ip;
     } else {
       return;
     }
 
     await chat.startNewSession(hostId);
 
-    try {
-      final connection = ref.read(sshConnectionProvider.notifier);
-      await connection.connect(connInfo);
-
-      await chat.addSystemMessage(
-        '连接已建立 | ${connInfo.host}:${connInfo.port}',
-      );
-
-      final sshService = ref.read(sshClientServiceProvider);
-      final outputStream = sshService.outputStream;
-
-      if (outputStream != null && _outputSubscription == null) {
-        _outputSubscription = outputStream.listen((data) {
-          chat.addOutput(data);
-          _scrollToBottom();
-        });
-      }
-
-      await chat.addSystemMessage('提示: 在下方输入命令，按回车发送');
-    } catch (e) {
-      await chat.addSystemMessage('连接失败: $e');
-    } finally {
-      _connecting = false;
+    // Check if SSH client is already connected
+    if (sshService.client == null || sshService.shellSession == null) {
+      setState(() {
+        _error = true;
+        _errorMsg = 'SSH 未连接，请返回重试';
+      });
+      await chat.addSystemMessage('错误: SSH 未连接，请返回主页重新连接');
+      return;
     }
+
+    setState(() => _connected = true);
+    await chat.addSystemMessage('连接已建立 | $_subtitle');
+
+    // Subscribe to output stream
+    final outputStream = sshService.outputStream;
+    if (outputStream != null && _outputSubscription == null) {
+      _outputSubscription = outputStream.listen((data) {
+        chat.addOutput(data);
+        _scrollToBottom();
+      });
+    }
+
+    await chat.addSystemMessage('提示: 在下方输入命令，按回车发送');
+
+    // Try to get initial shell prompt
+    sshService.sendShellCommand('');
   }
 
   void _scrollToBottom() {
@@ -138,7 +123,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
   }
 
   void _sendCommand(String command) async {
-    if (command.trim().isEmpty || _connecting) return;
+    if (command.trim().isEmpty || !_connected) return;
 
     final chat = ref.read(chatProvider.notifier);
     final sshService = ref.read(sshClientServiceProvider);
@@ -161,6 +146,10 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     final text = _inputController.text;
     _inputController.clear();
     _sendCommand(text);
+  }
+
+  void _retry() {
+    Navigator.pop(context);
   }
 
   @override
@@ -190,7 +179,29 @@ class _ChatPageState extends ConsumerState<ChatPage> {
           ],
         ),
         actions: [
-          if (!widget.readOnly)
+          if (_connected)
+            Container(
+              margin: const EdgeInsets.only(right: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: Colors.green.withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 8, height: 8,
+                    decoration: const BoxDecoration(
+                      color: Colors.green, shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  Text('在线', style: TextStyle(fontSize: 12, color: Colors.green[700])),
+                ],
+              ),
+            ),
+          if (!widget.readOnly && _connected)
             IconButton(
               icon: const Icon(Icons.file_download),
               onPressed: () => setState(() => _showFilePanel = !_showFilePanel),
@@ -200,39 +211,55 @@ class _ChatPageState extends ConsumerState<ChatPage> {
       ),
       body: Column(
         children: [
-          if (widget.host?.macAddress != null || widget.host?.hostKeyAlgorithm != null)
+          if (!widget.readOnly && _connected) const ChatPathIndicator(),
+
+          Expanded(
+            child: chatState.messages.isEmpty && !_error
+                ? Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const CircularProgressIndicator(),
+                        const SizedBox(height: 16),
+                        Text('连接中...', style: theme.textTheme.bodyLarge?.copyWith(color: Colors.grey)),
+                      ],
+                    ),
+                  )
+                : ListView.builder(
+                    controller: _scrollController,
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    itemCount: chatState.messages.length,
+                    itemBuilder: (context, index) {
+                      final msg = chatState.messages[index];
+                      if (msg.type == MessageType.fileTransfer) {
+                        return TransferBubble(message: msg);
+                      }
+                      return ChatBubble(message: msg);
+                    },
+                  ),
+          ),
+
+          if (_error)
             Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-              color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-              child: Text(
-                '${widget.host?.hostKeyAlgorithm ?? "SSH"} | 指纹已验证',
-                style: theme.textTheme.labelSmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
+              padding: const EdgeInsets.all(16),
+              color: theme.colorScheme.errorContainer,
+              child: Column(
+                children: [
+                  Text(_errorMsg,
+                      style: TextStyle(color: theme.colorScheme.onErrorContainer)),
+                  const SizedBox(height: 8),
+                  FilledButton.tonal(
+                    onPressed: _retry,
+                    child: const Text('返回重试'),
+                  ),
+                ],
               ),
             ),
 
-          if (!widget.readOnly) const ChatPathIndicator(),
+          if (!widget.readOnly && _connected)
+            ChatSuggestionChips(onTap: _sendCommand),
 
-          Expanded(
-            child: ListView.builder(
-              controller: _scrollController,
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              itemCount: chatState.messages.length,
-              itemBuilder: (context, index) {
-                final msg = chatState.messages[index];
-                if (msg.type == MessageType.fileTransfer) {
-                  return TransferBubble(message: msg);
-                }
-                return ChatBubble(message: msg);
-              },
-            ),
-          ),
-
-          if (!widget.readOnly) ChatSuggestionChips(onTap: _sendCommand),
-
-          if (!widget.readOnly && _showFilePanel && widget.host != null)
+          if (!widget.readOnly && _connected && _showFilePanel && widget.host != null)
             ChatFilePanel(
               host: widget.host!,
               sessionId: chatState.currentSession?.sessionId ?? '',
@@ -253,11 +280,11 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                 ],
               ),
             )
-          else
+          else if (!_error)
             ChatInputBar(
               controller: _inputController,
               focusNode: _inputFocus,
-              onSend: _sendMessage,
+              onSend: _connected ? _sendMessage : null,
               onFileTap: () => setState(() => _showFilePanel = !_showFilePanel),
             ),
         ],

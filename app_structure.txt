@@ -1,635 +1,148 @@
 ================================================================================
-  Android SSH Client — Flutter 完整技术路线与架构设计
+  Android SSH Client — 修正后的完整技术路线 (v2)
 ================================================================================
 
-一、技术栈选型
+一、核心流程设计
 ================================================================================
 
-  框架:     Flutter 3.x (Dart)
-  平台:     Android (API 34+, Android 14+)
-  UI:       Flutter Material3 Widgets
-  语言:     Dart 3.x (空安全)
-  构建:     Flutter CLI + Gradle + Kotlin DSL
-  IDE:      Android Studio / VS Code + Flutter 插件
+  主页 (主机收藏列表)
+  ├── 收藏的主机卡片列表 (Host对象: displayName, ip, port, username, password, fingerprint)
+  │   └─ 点击卡片 → [1]建立SSH连接 → [2]连接成功 → [3]跳转会话页(可操作)
+  │                              → [2]连接失败 → 弹窗报错, 不跳转
+  ├── [+] FAB: 添加收藏主机 (仅保存信息到DB, 不连接)
+  │   └─ 弹窗: IP / 端口 / 用户名 / 密码 / 备注 → 保存 → 主页刷新
+  └── [直连] 按钮: 手动输入凭据并立即连接 (不保存)
+      └─ 弹窗: IP / 端口 / 用户名 / 密码 → 点击连接
+          ├─ [1]建立SSH连接 → [2]成功 → 跳转会话页
+          └─ [2]失败 → 弹窗报错
 
-二、项目目录结构
+  会话页 (聊天式SSH)
+  ├─ 只读模式 (历史回放): 从DB读取消息, 底部显示"只读模式"
+  └─ 活动模式 (实时SSH):
+      ├─ 顶部: 路径指示器 (点击显示目录列表)
+      ├─ 中间: 消息列表 (命令/输出/系统)
+      ├─ 快捷命令Chips
+      └─ 输入栏 + 文件面板
+
+二、SSH 连接引擎 (修复要点)
 ================================================================================
 
-  ssh_client/
-  ├── android/app/src/main/
-  │   ├── AndroidManifest.xml          # 权限声明 (INTERNET, FOREGROUND_SERVICE 等)
-  │   └── kotlin/.../MainActivity.kt   # Flutter 嵌入 Activity
-  ├── lib/
-  │   ├── main.dart
-  │   ├── app.dart
-  │   ├── core/
-  │   │   ├── theme/
-  │   │   │   ├── app_theme.dart
-  │   │   │   ├── theme_green.dart
-  │   │   │   ├── theme_blue.dart
-  │   │   │   ├── theme_pink.dart
-  │   │   │   ├── theme_dark.dart
-  │   │   │   └── theme_orange.dart
-  │   │   ├── constants.dart
-  │   │   └── extensions/
-  │   ├── data/
-  │   │   ├── database/
-  │   │   │   ├── app_database.dart
-  │   │   │   ├── tables/
-  │   │   │   │   ├── hosts_table.dart
-  │   │   │   │   ├── sessions_table.dart
-  │   │   │   │   ├── messages_table.dart
-  │   │   │   │   └── transfers_table.dart    # 文件传输记录
-  │   │   │   └── dao/
-  │   │   │       ├── host_dao.dart
-  │   │   │       ├── session_dao.dart
-  │   │   │       ├── message_dao.dart
-  │   │   │       └── transfer_dao.dart
-  │   │   ├── models/
-  │   │   │   ├── host.dart
-  │   │   │   ├── session.dart
-  │   │   │   ├── chat_message.dart
-  │   │   │   ├── ssh_connection_info.dart
-  │   │   │   ├── quick_command.dart
-  │   │   │   ├── transfer_task.dart          # 文件传输任务
-  │   │   │   └── transfer_progress.dart      # 传输进度
-  │   │   └── repositories/
-  │   │       ├── host_repository.dart
-  │   │       ├── session_repository.dart
-  │   │       ├── message_repository.dart
-  │   │       └── transfer_repository.dart
-  │   ├── services/
-  │   │   ├── ssh/
-  │   │   │   ├── ssh_client_service.dart
-  │   │   │   ├── ssh_host_key_verifier.dart
-  │   │   │   ├── ssh_session_manager.dart
-  │   │   │   └── ssh_auth_handler.dart
-  │   │   ├── scp/
-  │   │   │   ├── scp_transfer_service.dart   # SCP 传输引擎
-  │   │   │   ├── scp_uploader.dart           # 文件上传
-  │   │   │   ├── scp_downloader.dart         # 文件下载
-  │   │   │   └── scp_progress_tracker.dart   # 传输进度跟踪
-  │   │   ├── network/
-  │   │   │   ├── lan_scanner.dart
-  │   │   │   ├── arp_discoverer.dart
-  │   │   │   └── port_scanner.dart
-  │   │   ├── host_identifier.dart
-  │   │   └── notification_service.dart
-  │   ├── providers/
-  │   │   ├── ssh_connection_provider.dart
-  │   │   ├── chat_provider.dart
-  │   │   ├── host_list_provider.dart
-  │   │   ├── scan_provider.dart
-  │   │   ├── theme_provider.dart
-  │   │   └── transfer_provider.dart          # 传输任务状态
-  │   └── ui/
-  │       ├── pages/
-  │       │   ├── home_page.dart
-  │       │   ├── scan_page.dart
-  │       │   ├── chat_page.dart
-  │       │   ├── host_detail_page.dart
-  │       │   ├── history_page.dart
-  │       │   ├── settings_page.dart
-  │       │   ├── quick_commands_page.dart
-  │       │   └── transfers_page.dart         # 传输管理页 (正在传输 / 历史)
-  │       └── widgets/
-  │           ├── chat/
-  │           │   ├── chat_bubble.dart
-  │           │   ├── chat_input_bar.dart
-  │           │   ├── chat_output_view.dart
-  │           │   ├── chat_path_indicator.dart
-  │           │   ├── chat_suggestion_chips.dart
-  │           │   └── chat_file_panel.dart    # 底部文件面板 (QQ 式)
-  │           ├── host/
-  │           │   ├── host_card.dart
-  │           │   ├── host_status_badge.dart
-  │           │   └── host_fingerprint_dialog.dart
-  │           ├── scan/
-  │           │   ├── scan_result_tile.dart
-  │           │   └── scan_progress_indicator.dart
-  │           ├── transfer/
-  │           │   ├── transfer_tile.dart          # 传输任务行 (文件名/进度/速度)
-  │           │   ├── transfer_progress_bar.dart  # 传输进度条
-  │           │   ├── transfer_speed_label.dart   # 实时速度显示
-  │           │   ├── transfer_bubble.dart        # 聊天气泡中的文件消息
-  │           │   ├── file_picker_sheet.dart      # 底部文件选择弹出
-  │           │   └── remote_file_browser.dart    # 远程文件浏览对话框
-  │           └── common/
-  │               ├── theme_selector.dart
-  │               ├── command_chip.dart
-  │               └── session_history_tile.dart
-  └── pubspec.yaml
-
-三、核心模块详细设计
-================================================================================
-
-  3.1 SSH 连接引擎 (dartssh2)
-  --------------------------------------------------------------------------------
-  使用 dartssh2 纯 Dart SSH 库。
-
-  连接流程:
+  问题诊断:
   ┌─────────────────────────────────────────────────────────────────────┐
-  │ 1. 用户输入 IP:Port 或从扫描列表点击                                │
-  │ 2. HostIdentifier 检查本地数据库:                                   │
-  │    ├─ 有记录 → 比对 SSH host key fingerprint                        │
-  │    │   ├─ 匹配 → 继续连接                                           │
-  │    │   └─ 不匹配 → 弹窗警告 "主机指纹变更，可能被中间人攻击!"       │
-  │    └─ 无记录 → 首次连接，弹窗显示指纹，让用户确认                    │
-  │ 3. SSH 握手 (Key Exchange):                                         │
-  │    ├─ 算法协商 (kex_algorithms, host_key_algorithms)               │
-  │    ├─ Diffie-Hellman 密钥交换                                       │
-  │    ├─ 主机密钥验证 (RSA/ECDSA/Ed25519)                              │
-  │    └─ 会话加密通道建立                                              │
-  │ 4. 用户认证:                                                        │
-  │    ├─ 密码认证 (password)                                            │
-  │    ├─ 公钥认证 (publickey) — 支持加载本地密钥文件                    │
-  │    └─ keyboard-interactive (如 Google Authenticator)                │
-  │ 5. 打开 Shell channel → 分配 PTY                                    │
-  │ 6. 进入命令循环: 发送命令 → 接收输出 → 显示到聊天区                │
+  │ 当前代码的问题:                                                      │
+  │ 1. ChatPage._connect() 不等待连接完成就允许用户输入, 导致发命令时   │
+  │    连接可能还没建立或已失败                                         │
+  │ 2. 发送命令 → 但shell的输出流没有被正确捕获展示:                    │
+  │    a. sendShellCommand() 只写入stdin, 不等待/捕获输出              │
+  │    b. _outputController 虽然监听了stdout, 但chat_page中订阅可能     │
+  │       存在时序问题 (建立连接后才订阅, 错过shell prompt等)           │
+  │ 3. 连接失败后仍然跳转到会话页, 用户看到空白页面                     │
   └─────────────────────────────────────────────────────────────────────┘
 
-  关键实现:
-  - Session Keepalive: 每 30s 发送 SSH_MSG_GLOBAL_REQUEST (keepalive@openssh.com)
-  - 断线重连: 检测连接断开后自动尝试重连 (可配置)
-  - PTY 分配: TERM=xterm-256color, 行列数动态适配屏幕
-  - Shell 模式: 持久的 shell channel，不断开
-  - 窗口大小变化: SSH_MSG_CHANNEL_WINDOW_ADJUST 通知服务端
-
-  3.2 主机身份识别 (HostIdentifier)
-  --------------------------------------------------------------------------------
-  三层绑定策略:
-
-  第一层: SSH Host Key Fingerprint (最强)
-    - 获取服务端公钥, 计算 SHA256 指纹
-    - 主机唯一 ID = fingerprint
-    - 主机换 IP 换网段都能识别
-
-  第二层: MAC 地址 (局域网)
-    - ARP 扫描获取 MAC 地址
-    - 指纹不匹配但 MAC 匹配 → 可能是服务器重装, 记录变更
-
-  第三层: 用户自定义名称 + IP 回退
-
-  主机记录核心字段:
-    host_id (TEXT PK)             ← SSH host key SHA256 fingerprint
-    display_name (TEXT)           ← 用户自定义名称
-    current_ip (TEXT)             ← 最后已知 IP
-    port (INT)                    ← SSH 端口
-    mac_address (TEXT)            ← MAC 地址
-    host_key_fingerprint (TEXT)   ← SHA256 指纹
-    host_key_algorithm (TEXT)     ← 如 ssh-rsa, ecdsa-sha2-nistp256
-    first_seen_at (TEXT)
-    last_seen_at (TEXT)
-    connection_count (INT)
-    notes (TEXT)
-
-  3.3 聊天式会话界面 (核心 GUI)
-  --------------------------------------------------------------------------------
-  布局:
-  ┌──────────────────────────────────────────────────────────┐
-  │  ← 返回    [主机名 / 当前IP]         ⋮ 菜单            │
-  ├──────────────────────────────────────────────────────────┤
-  │  [主机信息栏: 指纹 | 在线时长 | 协议版本]              │
-  ├──────────────────────────────────────────────────────────┤
-  │  📂 /home/user/project                        📋 复制   │
-  ├──────────────────────────────────────────────────────────┤
-  │                                                          │
-  │  ~ $ ls -la                                      10:30  │
-  │  ┌──────────────────────────────────────────┐           │
-  │  │ total 28                                          │ │
-  │  │ drwxr-xr-x  2 user user 4096 May 13 10:30        │ │
-  │  │ -rw-r--r--  1 user user  220 May 13 10:30        │ │
-  │  └──────────────────────────────────────────┘           │
-  │  ═══ 命令耗时: 0.032s ═══                       10:30  │
-  │                                                          │
-  │  ~ $ df -h                                      10:31  │
-  │  ...                                                   │
-  │                                                          │
-  │  ┌─ 📄 下载: report.pdf ──────────────────────────┐   │
-  │  │  📁 /home/user/downloads/report.pdf             │   │
-  │  │  ════════════════════════ 66%  ███████░░░░░░░  │   │
-  │  │  2.4 MB / 3.6 MB  ⬆ 1.2 MB/s  [取消]          │   │
-  │  └────────────────────────────────────────────────┘   │
-  │                                                          │
-  │  ┌─ 📎 文件已接收 ──────────────────────────────┐   │
-  │  │  📄 config.yaml    2.4 KB                    │   │
-  │  │  📁 保存到: /storage/emulated/0/Download/    │   │
-  │  │  📂 打开文件夹    🔗 分享                    │   │
-  │  └────────────────────────────────────────────────┘   │
-  │                                                          │
-  ├──────────────────────────────────────────────────────────┤
-  │  [ls] [df -h] [ps aux] [+文件] [+编辑]                   │
-  ├──────────────────────────────────────────────────────────┤
-  │  📎 [选文件]  📷 [拍照]  📂 [浏览远程]   ~ $ _  [发送]  │
-  └──────────────────────────────────────────────────────────┘
-
-  消息类型:
-    1. 命令消息 (右对齐, 浅蓝/灰底色)
-    2. 输出消息 (左对齐, 等宽字体, 可滚动)
-    3. 文件传输消息 (左对齐, 特殊气泡, 进度条)
-       - 上传: 显示文件名, 大小, 实时进度, 速度
-       - 下载: 显示文件名, 保存路径, 进度, 完成后可打开
-    4. 系统消息 (居中, 小字, 灰色)
-
-  3.4 文件传输系统 (SCP/SFTP)
-  --------------------------------------------------------------------------------
-  核心设计:
-    SCP 协议基于 SSH 的 exec channel, 执行 scp 命令传输文件。
-    SFTP 通过 dartssh2 的 SFTP channel 实现 (优先选用, 支持目录列表)。
-
-  上传流程 (Android → Server):
-  ┌──────────────────────────────────────────────────────────────────────┐
-  │ 1. 用户点击底部 📎 → 弹出文件选择面板                               │
-  │ 2. Android SAF / MediaStore 打开文件选择器                          │
-  │    ├─ Android 14+ 使用 SAF (Storage Access Framework)              │
-  │    └─ 获取 content:// URI, 通过 Flutter 插件读取文件流              │
-  │ 3. 用户确认远程保存路径 (默认当前 shell 路径)                       │
-  │ 4. 建立独立的 SCP/SFTP channel (复用 SSH 连接)                     │
-  │ 5. 传输文件:                                                        │
-  │    ├─ 分块读取本地文件 (chunk 64KB)                                 │
-  │    ├─ 加密写入 SSH channel                                          │
-  │    ├─ 实时计算进度: bytesSent / totalBytes × 100                    │
-  │    ├─ 实时计算速度: sliding window 最近 5 秒的平均值                 │
-  │    └─ 显示到聊天区: 进度条 + 速度 + 剩余时间估算                    │
-  │ 6. 传输完成 → 发送系统消息: "文件传输完成: report.pdf (3.6 MB)"    │
-  │ 7. 传输失败 → 显示错误原因, 支持断点续传 (可选)                     │
-  └──────────────────────────────────────────────────────────────────────┘
-
-  下载流程 (Server → Android):
-  ┌──────────────────────────────────────────────────────────────────────┐
-  │ 1. 用户点击 "浏览远程文件" 或在聊天区输入 get 命令                  │
-  │ 2. 远程文件浏览器对话框: 列出当前目录, 点选文件                     │
-  │    ├─ 或: 聊天输入框输入命令自动识别含 scp/get 的下载意图           │
-  │    └─ 或: 输入框中输入远程路径, 直接触发下载                        │
-  │ 3. 用户选择本地保存位置 (Android SAF 目录选择器)                    │
-  │    ├─ 默认: Downloads 目录                                           │
-  │    └─ Android 14+ 使用 MediaStore.Downloads API                     │
-  │ 4. 建立 SCP/SFTP channel 下载                                       │
-  │ 5. 实时进度显示到聊天区 (同上)                                      │
-  │ 6. 下载完成:                                                         │
-  │    ├─ 本地文件已保存                                                 │
-  │    ├─ 通知栏提示: "文件下载完成: report.pdf"                        │
-  │    └─ 聊天区消息变为可点击: [📂 打开] [🔗 分享] 按钮              │
-  └──────────────────────────────────────────────────────────────────────┘
-
-  底部文件面板 (类似 QQ):
-  ┌──────────────────────────────────────────────────────┐
-  │ 📎 文件              📷 拍照/相册    📂 浏览远程    │
-  ├──────────────────────────────────────────────────────┤
-  │ 最近文件 (水平滚动):                                  │
-  │ ┌──────┐ ┌──────┐ ┌──────┐ ┌──────┐                │
-  │ │ 📄   │ │ 📄   │ │ 📄   │ │ 📄   │                │
-  │ │ repo │ │ conf │ │ data │ │ scri │                │
-  │ │ rt.pd│ │ ig.ya│ │ base.│ │ pt.sh│                │
-  │ └──────┘ └──────┘ └──────┘ └──────┘                │
-  │ [查看更多]                                           │
-  └──────────────────────────────────────────────────────┘
-
-  远程文件浏览器:
-  ┌──────────────────────────────────────┐
-  │ 远程路径: /home/user/downloads       │
-  │ ┌── 📁 ..                          │
-  │ │ 📁 projects                     │
-  │ │ 📁 backups                      │
-  │ │ 📄 report.pdf    3.6 MB         │
-  │ │ 📄 config.yaml   2.4 KB         │
-  │ │ 📄 data.tar.gz   156 MB         │
-  │ └──                                │
-  │                    [下载选中] [取消] │
-  └──────────────────────────────────────┘
-
-  SCP 协议细节:
-    - 复用现有的 SSH 连接, 通过 exec() 打开 scp channel
-    - 上传: scp -t /remote/path/filename
-    - 下载: scp -f /remote/path/filename
-    - 解析 SCP 协议应答 (Cxxxx mode size filename)
-    - 分块传输, 每块写完等待服务端 ACK
-    - 支持目录递归传输 scp -r (大文件时显示每个文件的进度)
-
-  SFTP 协议细节 (优先):
-    - 通过 dartssh2 SFTP channel
-    - opendir / readdir → 列出远程目录
-    - open → read/write → 流式传输文件
-    - stat / lstat → 获取文件元信息
-    - mkdir / rmdir / remove → 远程文件管理
-    - rename → 远程文件重命名
-
-  Android 14+ 文件访问权限:
-    - 读取: MediaStore + SAF (Storage Access Framework)
-    - 写入: MediaStore.Downloads (公有目录) + SAF (自定义目录)
-    - 无需 READ_EXTERNAL_STORAGE (Android 14+ 已废弃)
-    - 权限: READ_MEDIA_IMAGES, READ_MEDIA_VIDEO, READ_MEDIA_AUDIO
-    - 使用 file_picker 或 saf_stream 插件获取文件句柄
-
-  3.5 快捷命令系统
-  --------------------------------------------------------------------------------
-  预置命令分组:
-    ├── 文件操作: ls, ll, pwd, cd .., du -sh *, find . -name
-    ├── 系统监控: top -bn1, free -h, df -h, uptime, uname -a
-    ├── 网络工具: ip a, netstat -tlnp, ss -tlnp, ping -c 4, curl -v
-    ├── 进程管理: ps aux, kill, htop
-    ├── Docker: docker ps, docker images, docker logs -f
-    └── 自定义: 用户可编辑/新增/删除/排序
-
-  3.6 当前路径跟踪
-  --------------------------------------------------------------------------------
-  - Shell 启动时解析 PS1 或发送 pwd 获取初始路径
-  - 每次命令执行后获取当前路径 (解析 shell 提示符或内置 pwd)
-  - 路径显示在输入栏上方
-  - 文件传输时, 远程路径默认使用当前路径
-
-  3.7 历史会话管理
-  --------------------------------------------------------------------------------
-  数据模型:
-    Session:
-      session_id (TEXT PK)
-      host_id (TEXT FK → hosts)
-      start_time (TIMESTAMP)
-      end_time (TIMESTAMP | NULL)
-      command_count (INT)
-
-    ChatMessage:
-      message_id (TEXT PK)
-      session_id (TEXT FK → sessions)
-      type (ENUM: command / output / system / file_transfer)
-      content (TEXT)
-      working_directory (TEXT)
-      timestamp (TIMESTAMP)
-      duration_ms (INT | NULL)
-
-    TransferTask:
-      transfer_id (TEXT PK)
-      session_id (TEXT FK → sessions)
-      direction (ENUM: upload / download)
-      local_path (TEXT)
-      remote_path (TEXT)
-      filename (TEXT)
-      file_size (INT)
-      bytes_transferred (INT)
-      status (ENUM: pending / transferring / completed / failed / cancelled)
-      started_at (TIMESTAMP)
-      completed_at (TIMESTAMP | NULL)
-      error_message (TEXT | NULL)
-
-  历史会话功能:
-    - 主页 "历史会话" 入口: 列出所有历史会话 (按时间倒序)
-    - 每条显示: 主机名, 日期, 命令条数, 持续时长
-    - 点击进入: 只读模式回放整个会话 (包含文件传输记录)
-    - 搜索: 按主机名/命令内容/文件名/日期范围搜索
-    - 导出: 将会话导出为文本文件 (含文件传输记录)
-
-  3.8 局域网扫描
-  --------------------------------------------------------------------------------
-  扫描流程:
-    1. 获取本机 IP + 子网掩码 → CIDR 范围
-    2. 并发 Ping 探测存活 (ICMP / TCP Connect)
-    3. 对存活主机尝试连接 22 端口 (超时 500ms)
-    4. 获取 SSH banner 版本信息
-    5. 解析 ARP 表获取 MAC 地址
-    6. 显示结果列表
-
-  3.9 GUI 外观与用户体验
-  --------------------------------------------------------------------------------
-  设计语言:
-    - 圆角设计 (12-16dp), 柔和阴影
-    - 大面积留白, 呼吸感
-    - 微交互动效 (按钮涟漪, 列表弹性, 气泡渐入)
-    - 等宽字体输出 (JetBrains Mono / Fira Code)
-    - 毛玻璃效果 (Android 12+)
-
-  5 套主题色系:
-    ├── 🌿 清新绿   (primary: #4CAF50, 背景: #F1F8E9)
-    ├── 🌊 海洋蓝   (primary: #1976D2, 背景: #E3F2FD)
-    ├── 🌸 樱花粉   (primary: #E91E63, 背景: #FCE4EC)
-    ├── 🌙 暗夜黑   (primary: #90CAF9, 背景: #121212)
-    └── ☀️ 暖阳橙   (primary: #FF9800, 背景: #FFF3E0)
-
-  3.10 通知与后台保活
-  --------------------------------------------------------------------------------
-    - Foreground Service 保活
-    - 通知栏显示连接状态 + 文件传输进度
-    - 传输完成通知: 点击可打开文件
-    - 屏幕常亮 (wakelock_plus)
-
-四、Android 14+ 适配要点
-================================================================================
-
+  修复方案:
   ┌─────────────────────────────────────────────────────────────────────┐
-  │ Android 14 (API 34) 强制要求:                                      │
-  │                                                                    │
-  │ 1. 前台服务类型 (Foreground Service Types)                         │
-  │    - AndroidManifest 中声明:                                       │
-  │      <uses-permission android:name="android.permission.           │
-  │        FOREGROUND_SERVICE_CONNECTED_DEVICE" />                    │
-  │      <service android:foregroundServiceType="connectedDevice" />  │
-  │                                                                    │
-  │ 2. 文件访问 (Scoped Storage)                                       │
-  │    - 使用 SAF (Intent ACTION_OPEN_DOCUMENT / ACTION_CREATE_DOCUMENT)│
-  │    - 使用 MediaStore (Downloads 集合)                               │
-  │    - 权限: READ_MEDIA_IMAGES / READ_MEDIA_VIDEO / READ_MEDIA_AUDIO │
-  │    - 不再使用 READ_EXTERNAL_STORAGE                                 │
-  │                                                                    │
-  │ 3. 网络权限                                                       │
-  │    - INTERNET 权限 (已声明)                                        │
-  │    - CHANGE_WIFI_MULTICAST_STATE (局域网扫描需要)                  │
-  │                                                                    │
-  │ 4. 通知权限                                                       │
-  │    - Android 13+ 需要 POST_NOTIFICATIONS 运行时权限               │
-  │    - 引导用户开启通知权限                                           │
-  │                                                                    │
-  │ 5. 后台限制                                                       │
-  │    - SSH 保活使用 Foreground Service                               │
-  │    - 网络扫描使用 WorkManager 或协程                                │
+  │ 连接流程:                                                           │
+  │  1. 用户在主页触发连接(收藏卡片点击/直连按钮)                       │
+  │  2. 显示 LoadingDialog "正在连接..."                                │
+  │  3. SshClientService.connect():                                      │
+  │     a. TCP连接 (10秒超时)                                            │
+  │     b. SSH握手 + 主机密钥验证                                        │
+  │     c. 密码认证                                                      │
+  │     d. 打开 Shell channel + PTY                                      │
+  │     e. 订阅 stdout → _outputController                               │
+  │     f. 启动 keepalive                                                │
+  │  4. 连接成功 → 关闭LoadingDialog → Navigator.push(会话页)          │
+  │  5. 连接失败 → 关闭LoadingDialog → 弹窗显示错误原因                 │
+  │                                                                      │
+  │ 命令执行流程:                                                        │
+  │  1. 用户输入命令, 按发送                                             │
+  │  2. 创建 ChatMessage 写入DB (立即显示"已发送")                      │
+  │  3. sshService.sendShellCommand(cmd) → 写入stdin                    │
+  │  4. Shell处理命令, 输出到stdout                                      │
+  │  5. _outputSubscription 收到数据 → chat.addOutput() → DB存储+UI显示 │
+  │  6. 输出流持续, 直到命令完成 (解析shell提示符可判断命令结束)        │
   └─────────────────────────────────────────────────────────────────────┘
 
-  关键 AndroidManifest 权限声明:
+  改进: 会话页增加连接状态指示:
+  - 连接中: 显示 Loading 动画, 输入栏禁用
+  - 已连接: 输入栏可用, 显示"已连接"系统消息
+  - 连接失败: 显示错误消息, 输入栏禁用, 底部显示"重试"按钮
 
-    <uses-permission android:name="android.permission.INTERNET"/>
-    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
-    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE"/>
-    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE"/>
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE"/>
-    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
-    <uses-permission android:name="android.permission.WAKE_LOCK"/>
-
-    <!-- 可选: 文件访问 (Android 14+) -->
-    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"/>
-    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO"/>
-    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO"/>
-
-  目标 SDK:
-    compileSdk = 35
-    minSdk = 34
-    targetSdk = 35
-
-五、状态管理 (Flutter Riverpod)
+三、Android 本地子网检测
 ================================================================================
 
-  sshConnectionProvider    StateNotifierProvider<SSHConnectionNotifier, SSHConnectionState>
-    ├── .idle
-    ├── .connecting(host)
-    ├── .authenticating(method)
-    ├── .connected(host, sessionId)
-    ├── .reconnecting(host, attempt)
-    ├── .disconnected(reason)
-    └── .error(message)
+  Android 平台限制:
+  - dart:io 的 NetworkInterface.list() 在 Android上不可靠
+  - InternetAddress 不提供 netmask
+  - 需要读取 Android 系统文件 /proc/net/route 获取网关和掩码
 
-  chatProvider             StateNotifierProvider<ChatNotifier, ChatState>
-    ├── messages: List<ChatMessage>
-    ├── currentDirectory: String
-    ├── isStreaming: bool
-    ├── autoScroll: bool
-    └── inputText: String
+  实现方案 (多层降级):
+  ┌─────────────────────────────────────────────────────────────────────┐
+  │ 第一层: 读取 /proc/net/route (Android 可用)                         │
+  │   文件格式: Iface, Destination, Gateway, Flags, RefCnt, Use,       │
+  │            Metric, Mask, MTU, Window, IRTT                         │
+  │   - 解析 Destination(目标网络) + Mask(子网掩码)                    │
+  │   - 转换为 CIDR 格式: ip/maskBits                                   │
+  │   示例:                                                             │
+  │   wlan0  00000000  0108A8C0  0003  0  0  0  00FFFFFF  0  0  0     │
+  │   → Destination=0.0.0.0(默认路由), Gateway=192.168.8.1            │
+  │   → Mask=00FFFFFF → 255.255.255.0 → /24                           │
+  │                                                                     │
+  │ 第二层: NetworkInterface.list() (Android 10+)                      │
+  │   获取第一个非回环 IPv4 地址                                        │
+  │   默认使用 /24 (因为无法获取 netmask)                               │
+  │                                                                     │
+  │ 第三层: 回退到 192.168.1.1/24                                       │
+  │                                                                     │
+  │ 用户的输入始终可编辑                                                   │
+  └─────────────────────────────────────────────────────────────────────┘
 
-  transferProvider         StateNotifierProvider<TransferNotifier, TransferState>
-    ├── activeTransfers: List<TransferTask>     // 正在传输
-    ├── historyTransfers: List<TransferTask>    // 已完成
-    ├── overallProgress: TransferStats          // 总传输量/速度
-    └── remoteFileList: List<RemoteFileEntry>   // 远程文件列表
+  /proc/net/route 解析核心逻辑:
+    String destinationHex, maskHex;
+    读取 /proc/net/route 的每一行 (跳过标题行)
+    找到 Iface 非空且 Destination 非 00000000 的行
+    将 Destination 的 hex 转为 IP (小端序)
+    将 Mask 的 hex 转为 IP, 计算掩码位数
 
-  hostListProvider  /  scanProvider  /  themeProvider
-
-六、Flutter 依赖 (pubspec.yaml)
+四、收藏主机模型
 ================================================================================
 
-  dependencies:
-    flutter:
-      sdk: flutter
+  Host 模型需要存储连接凭据:
+  - hostId: SSH指纹 (TEXT PK)
+  - displayName: 用户自定义名称 (TEXT)
+  - currentIp: IP地址 (TEXT)
+  - port: SSH端口 (INT)
+  - username: SSH用户名 (TEXT)
+  - password: SSH密码 (TEXT)  — 新增字段
+  - macAddress: MAC地址 (TEXT, nullable)
+  - hostKeyFingerprint: SSH主机指纹 (TEXT)
+  - hostKeyAlgorithm: 密钥算法 (TEXT, nullable)
+  - sshBanner: SSH版本信息 (TEXT, nullable)
+  - firstSeenAt: 首次添加时间 (TEXT)
+  - lastSeenAt: 最后连接时间 (TEXT)
+  - connectionCount: 连接次数 (INT)
+  - notes: 备注 (TEXT, nullable)
 
-    # SSH
-    dartssh2: ^2.9.0
-
-    # 数据库
-    drift: ^2.15.0
-    sqlite3_flutter_libs: ^0.5.0
-    path_provider: ^2.1.0
-
-    # 状态管理
-    flutter_riverpod: ^2.4.0
-
-    # 导航
-    go_router: ^13.0.0
-
-    # 网络 / 局域网扫描
-    ping_discover_net: ^0.4.0
-
-    # 文件选择与存储
-    file_picker: ^8.0.0                      # 跨平台文件选择器 (SAF)
-    saf_stream: ^1.0.0                       # SAF 文件流读取 (Android 14+)
-    open_filex: ^4.4.0                       # 打开已下载的文件
-    share_plus: ^7.2.0                       # 分享文件
-    path_provider: ^2.1.0
-
-    # 权限
-    permission_handler: ^11.3.0              # 运行时权限处理
-
-    # UI 增强
-    flutter_animate: ^4.3.0
-    shimmer: ^3.0.0
-    adaptive_theme: ^3.4.0
-    google_fonts: ^6.1.0
-    percent_indicator: ^4.2.3                # 文件传输进度条
-
-    # 工具
-    wakelock_plus: ^1.1.0
-    flutter_local_notifications: ^17.0.0     # 前台通知 + 传输完成通知
-    intl: ^0.19.0
-
-  dev_dependencies:
-    flutter_test:
-      sdk: flutter
-    drift_dev: ^2.15.0
-    build_runner: ^2.4.0
-
-七、数据持久化 (Drift/SQLite 表结构)
+五、主题颜色方案
 ================================================================================
 
-  CREATE TABLE hosts (
-    host_id            TEXT PRIMARY KEY,
-    display_name       TEXT NOT NULL DEFAULT '',
-    current_ip         TEXT NOT NULL,
-    port               INTEGER NOT NULL DEFAULT 22,
-    mac_address        TEXT,
-    host_key_fingerprint TEXT NOT NULL,
-    host_key_algorithm   TEXT,
-    ssh_banner         TEXT,
-    first_seen_at      TEXT NOT NULL,
-    last_seen_at       TEXT NOT NULL,
-    connection_count   INTEGER NOT NULL DEFAULT 0,
-    notes              TEXT
-  );
+  亮蓝色主题 (Light + Dark 统一色系):
 
-  CREATE TABLE sessions (
-    session_id         TEXT PRIMARY KEY,
-    host_id            TEXT NOT NULL REFERENCES hosts(host_id),
-    start_time         TEXT NOT NULL,
-    end_time           TEXT,
-    command_count      INTEGER NOT NULL DEFAULT 0,
-    last_working_dir   TEXT DEFAULT '/'
-  );
+  Light Mode:
+  - primary: #2196F3 (Material Blue)
+  - primaryContainer: #BBDEFB
+  - surface: #FFFFFF
+  - background: #F5F9FF (淡蓝白)
+  - 整体: 明亮、通透、天蓝色调
 
-  CREATE TABLE chat_messages (
-    message_id         TEXT PRIMARY KEY,
-    session_id         TEXT NOT NULL REFERENCES sessions(session_id),
-    type               TEXT NOT NULL CHECK(type IN ('command','output','system','file_transfer')),
-    content            TEXT NOT NULL,
-    working_directory  TEXT,
-    timestamp          TEXT NOT NULL,
-    duration_ms        INTEGER
-  );
+  Dark Mode:
+  - primary: #64B5F6 (亮蓝)
+  - primaryContainer: #1565C0
+  - surface: #1A1C1E
+  - background: #0F1114
+  - 整体: 深色底 + 亮蓝点缀
 
-  CREATE TABLE transfer_tasks (
-    transfer_id        TEXT PRIMARY KEY,
-    session_id         TEXT NOT NULL REFERENCES sessions(session_id),
-    direction          TEXT NOT NULL CHECK(direction IN ('upload','download')),
-    local_path         TEXT NOT NULL,
-    remote_path        TEXT NOT NULL,
-    filename           TEXT NOT NULL,
-    file_size          INTEGER NOT NULL DEFAULT 0,
-    bytes_transferred  INTEGER NOT NULL DEFAULT 0,
-    status             TEXT NOT NULL CHECK(status IN ('pending','transferring','completed','failed','cancelled')),
-    started_at         TEXT NOT NULL,
-    completed_at       TEXT,
-    error_message      TEXT
-  );
-
-  CREATE TABLE quick_commands (
-    command_id         INTEGER PRIMARY KEY AUTOINCREMENT,
-    label              TEXT NOT NULL,
-    command            TEXT NOT NULL,
-    category           TEXT NOT NULL DEFAULT 'custom',
-    sort_order         INTEGER NOT NULL DEFAULT 0,
-    is_builtin         INTEGER NOT NULL DEFAULT 0
-  );
-
-八、主机识别完整流程 (HostIdentifier)
 ================================================================================
-
-  场景: 用户在局域网扫描中看到 192.168.1.200:22 开放, 点击连接
-
-  1. 建立 TCP 连接, 发起 SSH 握手
-  2. 获取服务端 Host Key, 计算 SHA256:fingerprint
-  3. 查询数据库 hosts 表:
-     CASE A: fingerprint 匹配 → 找到主机
-       ├─ IP 与记录相同 → 正常连接, 恢复会话
-       └─ IP 与记录不同 → 弹窗更新 IP
-     CASE B: fingerprint 不匹配, 相同 IP 有记录
-       → 密钥变更警告 (MITM 风险)
-     CASE C: 完全未知 → 首次连接确认弹窗
-  4. 连接成功后检视历史, 提示 "继续上次会话?"
-
-九、环境检测 (Ubuntu 24.04 LTS)
-================================================================================
-
-  已安装:
-  ┌──────────────────────────────────────────────────────────────────┐
-  │ ✅ Flutter 3.41.9 (stable)                                      │
-  │ ✅ Dart 3.11.5                                                  │
-  │ ✅ Android SDK (/home/pngchg/android-sdk, API 36)              │
-  │ ✅ JDK 21 (已切换为默认)                                        │
-  │ ✅ platform-tools (adb)                                         │
-  └──────────────────────────────────────────────────────────────────┘
-
-  环境已就绪, 可直接开始 Flutter 项目开发。
+    
+写完这个文件后, 我将按此方案修改代码。
 ================================================================================

@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:ssh_client/providers/providers.dart';
+import 'package:ssh_client/providers/ssh_connection_provider.dart';
 import 'package:ssh_client/data/models/host.dart';
 import 'package:ssh_client/data/models/direct_connect_info.dart';
+import 'package:ssh_client/data/models/ssh_connection_info.dart';
 import 'package:ssh_client/ui/pages/scan_page.dart';
 import 'package:ssh_client/ui/pages/chat_page.dart';
 import 'package:ssh_client/ui/pages/host_detail_page.dart';
@@ -31,106 +33,67 @@ class _HomePageState extends ConsumerState<HomePage> {
     setState(() => _hosts = hosts);
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('SSH Client'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.history),
-            onPressed: () => Navigator.push(context,
-                MaterialPageRoute(builder: (_) => const HistoryPage())).then((_) => _loadHosts()),
-            tooltip: '历史记录',
-          ),
-          IconButton(
-            icon: const Icon(Icons.settings),
-            onPressed: () => Navigator.push(context,
-                MaterialPageRoute(builder: (_) => const SettingsPage())),
-            tooltip: '设置',
-          ),
-        ],
-      ),
-      body: RefreshIndicator(
-        onRefresh: _loadHosts,
-        child: _hosts.isEmpty
-            ? Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.dns_outlined, size: 80,
-                        color: theme.colorScheme.primary.withValues(alpha: 0.3)),
-                    const SizedBox(height: 16),
-                    Text('还没有保存的主机',
-                        style: theme.textTheme.titleMedium
-                            ?.copyWith(color: Colors.grey)),
-                    const SizedBox(height: 8),
-                    Text('点击下方按钮扫描局域网或手动添加',
-                        style: theme.textTheme.bodySmall
-                            ?.copyWith(color: Colors.grey)),
-                    const SizedBox(height: 24),
-                    FilledButton.icon(
-                      onPressed: () => Navigator.push(context,
-                          MaterialPageRoute(builder: (_) => const ScanPage())).then((_) => _loadHosts()),
-                      icon: const Icon(Icons.wifi_find),
-                      label: const Text('扫描局域网'),
-                    ),
-                  ],
-                ),
-              )
-            : Column(
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                    child: SizedBox(
-                      width: double.infinity,
-                      child: OutlinedButton.icon(
-                        onPressed: () => Navigator.push(context,
-                            MaterialPageRoute(builder: (_) => const ScanPage())).then((_) => _loadHosts()),
-                        icon: const Icon(Icons.wifi_find),
-                        label: const Text('扫描局域网'),
-                      ),
-                    ),
-                  ),
-                  Expanded(
-                    child: ListView.builder(
-                      padding: const EdgeInsets.all(12),
-                      itemCount: _hosts.length,
-                      itemBuilder: (context, index) => _HostCard(
-                        host: _hosts[index],
-                        onTap: () => Navigator.push(context,
-                            MaterialPageRoute(builder: (_) => ChatPage(host: _hosts[index]))),
-                        onLongPress: () => Navigator.push(context,
-                            MaterialPageRoute(builder: (_) => HostDetailPage(host: _hosts[index]))),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-      ),
-      floatingActionButton: FloatingActionButton(
-        heroTag: 'add',
-        onPressed: () => _showConnectDialog(context),
-        backgroundColor: theme.colorScheme.primary,
-        foregroundColor: theme.colorScheme.onPrimary,
-        child: const Icon(Icons.add),
-      ),
+  Future<void> _connectAndNavigate(Host host) async {
+    final connInfo = SshConnectionInfo(
+      host: host.currentIp,
+      port: host.port,
+      username: host.username,
+      password: host.password,
     );
+
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => const Center(child: CircularProgressIndicator()),
+    );
+
+    try {
+      final connection = ref.read(sshConnectionProvider.notifier);
+      await connection.connect(connInfo);
+
+      if (!mounted) return;
+      Navigator.pop(context); // close loading
+
+      Navigator.push(context,
+        MaterialPageRoute(builder: (_) => ChatPage(
+          host: host,
+          directConnectInfo: DirectConnectInfo(
+            ip: host.currentIp,
+            port: host.port,
+            username: host.username,
+            password: host.password,
+          ),
+        )),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      Navigator.pop(context); // close loading
+      showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('连接失败'),
+          content: Text('$e'),
+          actions: [
+            FilledButton(onPressed: () => Navigator.pop(ctx),
+                child: const Text('确定')),
+          ],
+        ),
+      );
+    }
   }
 
-  void _showConnectDialog(BuildContext context) {
+  Future<void> _directConnect() async {
     final ipCtrl = TextEditingController();
     final portCtrl = TextEditingController(text: '22');
     final userCtrl = TextEditingController(text: 'root');
     final passCtrl = TextEditingController();
     final formKey = GlobalKey<FormState>();
 
-    showDialog(
+    final result = await showDialog<DirectConnectInfo>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('连接主机'),
+        title: const Text('直连主机'),
         content: SingleChildScrollView(
           padding: EdgeInsets.only(
             bottom: MediaQuery.of(context).viewInsets.bottom,
@@ -148,6 +111,138 @@ class _HomePageState extends ConsumerState<HomePage> {
                     hintText: '192.168.1.100',
                   ),
                   keyboardType: TextInputType.url,
+                  validator: (v) {
+                    if (v == null || v.isEmpty) return '请输入 IP';
+                    final parts = v.trim().split('.');
+                    if (parts.length != 4) return 'IP 格式错误';
+                    for (final p in parts) {
+                      final n = int.tryParse(p);
+                      if (n == null || n < 0 || n > 255) return 'IP 格式错误';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 8),
+                TextFormField(
+                  controller: portCtrl,
+                  decoration: const InputDecoration(
+                    labelText: '端口', prefixIcon: Icon(Icons.numbers),
+                  ),
+                  keyboardType: TextInputType.number,
+                ),
+                const SizedBox(height: 8),
+                TextFormField(
+                  controller: userCtrl,
+                  decoration: const InputDecoration(
+                    labelText: '用户名', prefixIcon: Icon(Icons.person),
+                  ),
+                  validator: (v) => (v == null || v.isEmpty) ? '请输入用户名' : null,
+                ),
+                const SizedBox(height: 8),
+                TextFormField(
+                  controller: passCtrl,
+                  decoration: const InputDecoration(
+                    labelText: '密码', prefixIcon: Icon(Icons.lock),
+                  ),
+                  obscureText: true,
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx),
+              child: const Text('取消')),
+          FilledButton(onPressed: () {
+            if (!(formKey.currentState?.validate() ?? false)) return;
+            Navigator.pop(ctx, DirectConnectInfo(
+              ip: ipCtrl.text.trim(),
+              port: int.tryParse(portCtrl.text.trim()) ?? 22,
+              username: userCtrl.text.trim(),
+              password: passCtrl.text,
+            ));
+          }, child: const Text('连接')),
+        ],
+      ),
+    );
+
+    if (result == null) return;
+
+    // Connect with verification
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => const Center(child: CircularProgressIndicator()),
+    );
+
+    try {
+      final connInfo = SshConnectionInfo(
+        host: result.ip, port: result.port,
+        username: result.username, password: result.password,
+      );
+      final connection = ref.read(sshConnectionProvider.notifier);
+      await connection.connect(connInfo);
+
+      if (!mounted) return;
+      Navigator.pop(context);
+
+      Navigator.push(context,
+        MaterialPageRoute(builder: (_) => ChatPage(
+          host: null,
+          directConnectInfo: result,
+        )),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      Navigator.pop(context);
+      showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('连接失败'),
+          content: Text('$e'),
+          actions: [
+            FilledButton(onPressed: () => Navigator.pop(ctx),
+                child: const Text('确定')),
+          ],
+        ),
+      );
+    }
+  }
+
+  void _showAddFavoriteDialog() {
+    final ipCtrl = TextEditingController();
+    final portCtrl = TextEditingController(text: '22');
+    final userCtrl = TextEditingController(text: 'root');
+    final passCtrl = TextEditingController();
+    final nameCtrl = TextEditingController();
+    final formKey = GlobalKey<FormState>();
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('添加收藏主机'),
+        content: SingleChildScrollView(
+          child: Form(
+            key: formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextFormField(
+                  controller: nameCtrl,
+                  decoration: const InputDecoration(
+                    labelText: '备注名称',
+                    prefixIcon: Icon(Icons.label),
+                    hintText: '例如: 我的服务器',
+                  ),
+                ),
+                const SizedBox(height: 8),
+                TextFormField(
+                  controller: ipCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'IP 地址',
+                    prefixIcon: Icon(Icons.computer),
+                  ),
                   validator: (v) {
                     if (v == null || v.isEmpty) return '请输入 IP';
                     final parts = v.trim().split('.');
@@ -193,23 +288,126 @@ class _HomePageState extends ConsumerState<HomePage> {
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx),
               child: const Text('取消')),
-          FilledButton(onPressed: () {
+          FilledButton(onPressed: () async {
             if (!(formKey.currentState?.validate() ?? false)) return;
-
-            final ip = ipCtrl.text.trim();
-            final port = int.tryParse(portCtrl.text.trim()) ?? 22;
-            final user = userCtrl.text.trim();
-            final pass = passCtrl.text;
-
+            final hostDao = await ref.read(hostDaoProvider.future);
+            final now = DateTime.now();
+            hostDao.insertHost(Host(
+              hostId: ipCtrl.text.trim(),
+              displayName: nameCtrl.text.trim().isNotEmpty
+                  ? nameCtrl.text.trim() : ipCtrl.text.trim(),
+              currentIp: ipCtrl.text.trim(),
+              port: int.tryParse(portCtrl.text.trim()) ?? 22,
+              username: userCtrl.text.trim(),
+              password: passCtrl.text,
+              hostKeyFingerprint: ipCtrl.text.trim(),
+              firstSeenAt: now,
+              lastSeenAt: now,
+            ));
             Navigator.pop(ctx);
-            Navigator.push(context,
-                MaterialPageRoute(builder: (_) => ChatPage(
-                  host: null,
-                  directConnectInfo: DirectConnectInfo(
-                    ip: ip, port: port, username: user, password: pass,
+            _loadHosts();
+          }, child: const Text('保存')),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('SSH Client'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.history),
+            onPressed: () => Navigator.push(context,
+                MaterialPageRoute(builder: (_) => const HistoryPage())).then((_) => _loadHosts()),
+            tooltip: '历史记录',
+          ),
+          IconButton(
+            icon: const Icon(Icons.settings),
+            onPressed: () => Navigator.push(context,
+                MaterialPageRoute(builder: (_) => const SettingsPage())),
+            tooltip: '设置',
+          ),
+        ],
+      ),
+      body: _buildBody(theme),
+      floatingActionButton: FloatingActionButton(
+        heroTag: 'add',
+        onPressed: _showAddFavoriteDialog,
+        backgroundColor: theme.colorScheme.primary,
+        foregroundColor: theme.colorScheme.onPrimary,
+        child: const Icon(Icons.add),
+      ),
+    );
+  }
+
+  Widget _buildBody(ThemeData theme) {
+    return RefreshIndicator(
+      onRefresh: _loadHosts,
+      child: _hosts.isEmpty
+          ? ListView(
+              children: [
+                SizedBox(height: MediaQuery.of(context).size.height * 0.2),
+                Center(
+                  child: Column(
+                    children: [
+                      Icon(Icons.dns_outlined, size: 80,
+                          color: theme.colorScheme.primary.withValues(alpha: 0.3)),
+                      const SizedBox(height: 16),
+                      Text('还没有收藏的主机',
+                          style: theme.textTheme.titleMedium?.copyWith(color: Colors.grey)),
+                      const SizedBox(height: 24),
+                    ],
                   ),
-                )));
-          }, child: const Text('连接')),
+                ),
+                _buildActionButtons(theme),
+              ],
+            )
+          : Column(
+              children: [
+                _buildActionButtons(theme),
+                Expanded(
+                  child: ListView.builder(
+                    padding: const EdgeInsets.fromLTRB(12, 0, 12, 80),
+                    itemCount: _hosts.length,
+                    itemBuilder: (context, index) => _HostCard(
+                      host: _hosts[index],
+                      onTap: () => _connectAndNavigate(_hosts[index]),
+                      onLongPress: () => Navigator.push(context,
+                          MaterialPageRoute(builder: (_) => HostDetailPage(host: _hosts[index]))),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+    );
+  }
+
+  Widget _buildActionButtons(ThemeData theme) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+      child: Row(
+        children: [
+          Expanded(
+            child: OutlinedButton.icon(
+              onPressed: () => Navigator.push(context,
+                  MaterialPageRoute(builder: (_) => const ScanPage())).then((_) => _loadHosts()),
+              icon: const Icon(Icons.wifi_find),
+              label: const Text('扫描'),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: FilledButton.icon(
+              onPressed: _directConnect,
+              icon: const Icon(Icons.flash_on),
+              label: const Text('直连'),
+            ),
+          ),
         ],
       ),
     );
@@ -221,11 +419,7 @@ class _HostCard extends StatelessWidget {
   final VoidCallback onTap;
   final VoidCallback onLongPress;
 
-  const _HostCard({
-    required this.host,
-    required this.onTap,
-    required this.onLongPress,
-  });
+  const _HostCard({required this.host, required this.onTap, required this.onLongPress});
 
   @override
   Widget build(BuildContext context) {
@@ -238,12 +432,9 @@ class _HostCard extends StatelessWidget {
           backgroundColor: theme.colorScheme.primaryContainer,
           child: Icon(Icons.dns, color: theme.colorScheme.primary),
         ),
-        title: Text(
-          host.displayName.isNotEmpty ? host.displayName : host.currentIp,
-        ),
+        title: Text(host.displayName.isNotEmpty ? host.displayName : host.currentIp),
         subtitle: Text(
-          '${host.currentIp}:${host.port}'
-          '${host.macAddress != null ? ' | ${host.macAddress}' : ''}',
+          '${host.username}@${host.currentIp}:${host.port}',
           style: theme.textTheme.bodySmall,
         ),
         trailing: Container(

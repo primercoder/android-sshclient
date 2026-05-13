@@ -3,6 +3,8 @@ class Host {
   final String displayName;
   final String currentIp;
   final int port;
+  final String username;
+  final String password;
   final String? macAddress;
   final String hostKeyFingerprint;
   final String? hostKeyAlgorithm;
@@ -17,6 +19,8 @@ class Host {
     this.displayName = '',
     required this.currentIp,
     this.port = 22,
+    this.username = 'root',
+    this.password = '',
     this.macAddress,
     required this.hostKeyFingerprint,
     this.hostKeyAlgorithm,
@@ -32,6 +36,8 @@ class Host {
     String? displayName,
     String? currentIp,
     int? port,
+    String? username,
+    String? password,
     String? macAddress,
     String? hostKeyFingerprint,
     String? hostKeyAlgorithm,
@@ -46,6 +52,8 @@ class Host {
       displayName: displayName ?? this.displayName,
       currentIp: currentIp ?? this.currentIp,
       port: port ?? this.port,
+      username: username ?? this.username,
+      password: password ?? this.password,
       macAddress: macAddress ?? this.macAddress,
       hostKeyFingerprint: hostKeyFingerprint ?? this.hostKeyFingerprint,
       hostKeyAlgorithm: hostKeyAlgorithm ?? this.hostKeyAlgorithm,
@@ -62,6 +70,8 @@ class Host {
     'display_name': displayName,
     'current_ip': currentIp,
     'port': port,
+    'username': username,
+    'password': password,
     'mac_address': macAddress,
     'host_key_fingerprint': hostKeyFingerprint,
     'host_key_algorithm': hostKeyAlgorithm,
@@ -77,6 +87,8 @@ class Host {
     displayName: json['display_name'] as String? ?? '',
     currentIp: json['current_ip'] as String,
     port: json['port'] as int? ?? 22,
+    username: json['username'] as String? ?? 'root',
+    password: json['password'] as String? ?? '',
     macAddress: json['mac_address'] as String?,
     hostKeyFingerprint: json['host_key_fingerprint'] as String,
     hostKeyAlgorithm: json['host_key_algorithm'] as String?,
