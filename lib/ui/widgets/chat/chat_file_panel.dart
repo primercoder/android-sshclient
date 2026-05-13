@@ -114,38 +114,57 @@ class ChatFilePanel extends ConsumerWidget {
 
   void _showDownloadDialog(BuildContext context, WidgetRef ref) {
     final remoteCtrl = TextEditingController(text: '$currentDirectory/');
+    final localCtrl = TextEditingController(text: ref.read(downloadDirProvider));
 
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('下载文件'),
-        content: TextField(
-          controller: remoteCtrl,
-          decoration: const InputDecoration(
-            labelText: '远程路径',
-            hintText: '/home/user/file.txt',
-            prefixIcon: Icon(Icons.terminal),
-          ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: remoteCtrl,
+              decoration: const InputDecoration(
+                labelText: '远程路径 (含文件名)',
+                hintText: '/home/user/file.txt',
+                prefixIcon: Icon(Icons.terminal),
+                isDense: true,
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: localCtrl,
+              decoration: const InputDecoration(
+                labelText: '保存到目录',
+                hintText: '/storage/emulated/0/Download',
+                prefixIcon: Icon(Icons.folder),
+                isDense: true,
+              ),
+            ),
+          ],
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
           FilledButton(onPressed: () async {
             final remotePath = remoteCtrl.text.trim();
-            if (remotePath.isEmpty) return;
+            final localDir = localCtrl.text.trim();
+            if (remotePath.isEmpty || localDir.isEmpty) return;
             Navigator.pop(ctx);
-            await _downloadFile(remotePath, context, ref);
+            await _downloadFile(remotePath, localDir, context, ref);
           }, child: const Text('下载')),
         ],
       ),
     );
   }
 
-  Future<void> _downloadFile(String remotePath, BuildContext context, WidgetRef ref) async {
+  Future<void> _downloadFile(String remotePath, String downloadDir, BuildContext context, WidgetRef ref) async {
     final filename = remotePath.split('/').last;
 
     // Use SAF to pick save location (works on Android 14+)
+    // Pre-fill with the filename, user can choose any location
     final savePath = await FilePicker.platform.saveFile(
-      dialogTitle: '保存文件',
+      dialogTitle: '保存到 (默认: $downloadDir)',
       fileName: filename,
     );
     if (savePath == null || !context.mounted) return;

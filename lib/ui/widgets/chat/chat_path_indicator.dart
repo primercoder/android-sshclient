@@ -24,7 +24,14 @@ class _ChatPathIndicatorState extends ConsumerState<ChatPathIndicator> {
     if (chatState.currentDirectory.isEmpty) return const SizedBox.shrink();
 
     return GestureDetector(
-      onTap: _showDirDropdown,
+      onTap: () {
+        if (_overlay != null) {
+          _overlay!.remove();
+          _overlay = null;
+        } else {
+          _showDirDropdown();
+        }
+      },
       child: Container(
         width: double.infinity,
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
@@ -68,40 +75,33 @@ class _ChatPathIndicatorState extends ConsumerState<ChatPathIndicator> {
   }
 
   void _showDirDropdown() async {
-    if (_overlay != null) {
-      _overlay!.remove();
-      _overlay = null;
-      return;
-    }
-
     setState(() => _loading = true);
     final path = ref.read(chatProvider).currentDirectory;
     final ssh = ref.read(sshClientServiceProvider);
 
     try {
-      final output = await ssh.execute('cd "$path" && ls -a && pwd');
+      // Use ls -la: lines starting with 'd' at char 0 are directories
+      final output = await ssh.execute('cd "$path" && ls -la && pwd');
       final lines = output.trim().split('\n');
-      final newPwd = lines.isNotEmpty ? lines.last.trim() : path;
+      if (lines.isEmpty) { setState(() => _loading = false); return; }
+
+      // Last line = pwd
+      final newPwd = lines.last.trim();
       if (newPwd.startsWith('/')) {
         ref.read(chatProvider.notifier).setDirectory(newPwd);
       }
 
-      // Collect directory names from ls -a
-      final names = <String>[];
-      for (final line in lines) {
-        final name = line.trim();
-        if (name.isEmpty || name == path || name == '.' ||
-            name.startsWith('/') || name == newPwd) continue;
-        names.add(name);
-      }
-
-      // Find which are directories
+      // Collect directory names from ls -la output
       final dirs = <String>['..'];
-      for (final d in names) {
-        try {
-          final t = await ssh.execute('cd "$newPwd" && test -d "$d" && echo d');
-          if (t.trim() == 'd') dirs.add(d);
-        } catch (_) {}
+      for (final line in lines) {
+        if (line.length < 2 || !line.startsWith('d')) continue;
+        final parts = line.split(RegExp(r'\s+'));
+        if (parts.length >= 9) {
+          final name = parts.sublist(8).join(' ');
+          if (name != '.' && name != '..' && name.isNotEmpty) {
+            dirs.add(name);
+          }
+        }
       }
 
       if (!mounted) return;
@@ -137,9 +137,7 @@ class _ChatPathIndicatorState extends ConsumerState<ChatPathIndicator> {
               borderRadius: BorderRadius.circular(10),
               clipBehavior: Clip.antiAlias,
               child: Container(
-                constraints: BoxConstraints(
-                  maxHeight: MediaQuery.of(context).size.height * 0.4,
-                ),
+                constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.4),
                 decoration: BoxDecoration(
                   color: Theme.of(context).colorScheme.surface,
                   borderRadius: BorderRadius.circular(10),
@@ -166,8 +164,7 @@ class _ChatPathIndicatorState extends ConsumerState<ChatPathIndicator> {
                       child: _dirs.isEmpty
                           ? const Padding(padding: EdgeInsets.all(16), child: Text('空目录'))
                           : ListView.builder(
-                              shrinkWrap: true,
-                              padding: EdgeInsets.zero,
+                              shrinkWrap: true, padding: EdgeInsets.zero,
                               itemCount: _dirs.length,
                               itemBuilder: (context, index) {
                                 final dir = _dirs[index];

@@ -48,6 +48,9 @@ class ChatNotifier extends StateNotifier<ChatState> {
   SessionDao? _sessionDao;
   static const _uuid = Uuid();
 
+  /// Track active sessions per hostId so re-entering reuses the same one
+  final Map<String, Session> _activeSessions = {};
+
   ChatNotifier(this._ref) : super(const ChatState());
 
   Future<MessageDao> get _messageDaoAsync async {
@@ -63,6 +66,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
   Future<void> loadSession(Session session) async {
     final msgDao = await _messageDaoAsync;
     final messages = msgDao.getMessagesBySession(session.sessionId);
+    _activeSessions[session.hostId] = session;
     state = ChatState(
       messages: messages,
       currentDirectory: session.lastWorkingDir,
@@ -71,6 +75,19 @@ class ChatNotifier extends StateNotifier<ChatState> {
   }
 
   Future<void> startNewSession(String hostId) async {
+    // Reuse active session if exists (keep-session flow)
+    if (_activeSessions.containsKey(hostId)) {
+      final session = _activeSessions[hostId]!;
+      final msgDao = await _messageDaoAsync;
+      final messages = msgDao.getMessagesBySession(session.sessionId);
+      state = ChatState(
+        messages: messages,
+        currentDirectory: session.lastWorkingDir,
+        currentSession: session,
+      );
+      return;
+    }
+
     final sessDao = await _sessionDaoAsync;
     final session = Session(
       sessionId: _uuid.v4(),
@@ -78,7 +95,17 @@ class ChatNotifier extends StateNotifier<ChatState> {
       startTime: DateTime.now(),
     );
     sessDao.insertSession(session);
+    _activeSessions[hostId] = session;
     state = ChatState(currentSession: session);
+  }
+
+  /// Called when user explicitly disconnects the SSH session
+  void endSession(String hostId) {
+    _activeSessions.remove(hostId);
+  }
+
+  void clearActiveSessions() {
+    _activeSessions.clear();
   }
 
   Future<void> addCommand(String command) async {

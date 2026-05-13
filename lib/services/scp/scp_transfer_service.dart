@@ -69,7 +69,6 @@ class ScpTransferService {
         completedAt: DateTime.now(),
       );
     } catch (e) {
-      scpSession.close();
       return task.copyWith(
         status: TransferStatus.failed,
         errorMessage: e.toString(),
@@ -130,7 +129,6 @@ class ScpTransferService {
         completedAt: DateTime.now(),
       );
     } catch (e) {
-      scpSession.close();
       return task.copyWith(
         status: TransferStatus.failed,
         errorMessage: e.toString(),

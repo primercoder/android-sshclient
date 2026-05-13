@@ -38,6 +38,12 @@ class _ChatPageState extends ConsumerState<ChatPage> {
   bool _error = false;
   String _errorMsg = '';
 
+  String get hostId {
+    if (widget.host != null) return widget.host!.hostId;
+    if (widget.directConnectInfo != null) return widget.directConnectInfo!.ip;
+    return '';
+  }
+
   String get _title {
     if (widget.host != null) {
       return widget.host!.displayName.isNotEmpty
@@ -73,15 +79,6 @@ class _ChatPageState extends ConsumerState<ChatPage> {
 
     if (!sshConn.isConnected || sshService.client == null) {
       setState(() { _error = true; _errorMsg = 'SSH 未连接，请返回重试'; });
-      return;
-    }
-
-    String hostId;
-    if (widget.host != null) {
-      hostId = widget.host!.hostId;
-    } else if (widget.directConnectInfo != null) {
-      hostId = widget.directConnectInfo!.ip;
-    } else {
       return;
     }
 
@@ -166,6 +163,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
             ),
             FilledButton(
               onPressed: () {
+                ref.read(chatProvider.notifier).endSession(hostId);
                 ref.read(sshConnectionProvider.notifier).disconnect();
                 Navigator.pop(ctx, 'disconnect');
               },
@@ -174,7 +172,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
           ],
         ),
       );
-      return result != null; // leave regardless
+      return result != null;
     }
     return true;
   }

@@ -1,159 +1,115 @@
-1，主页面左上角历史按钮要着干嘛，这不和顶部右上角的历史图标重复了吗，去掉直连左边的历史，同时可以把直连放在主页面右下角的加号的左边
-2，你的已添加主机列表是怎么回事，只能有一个吗，我后面新加一个就把之前的覆盖了，你咋想的
-3，注意一下局域网扫描展开后的ui设计，cidr字样没有显示全，感觉设计窄了被截了一部分，连接主机时编辑信息也是，ip字样被拦腰截断了一部分，稍微注意下
-4，局域网扫描是怎么设计的，感觉是不是限时了，没扫一会就结束了，可以把时长设置为30秒，另外扫描结果列表右侧不要设置为连接，而是添加，点击后编辑主机标识名/账户名/密码，然后添加到上方的已添加的主机
-5，最麻烦的事情还是会话，你到底有没有听进去，顶部的目录显示是可以点击并且相当于发送一个ls -a指令，下拉框只显示子目录，必须包含上一级目录‘..’，我可以点击子目录方便的进入，你这里硬是一点反应都没有，上传文件和下载文件你又是怎么做的，我可以上传一次，然后就不能再上传了。下载更糟糕，又是报错" type 'Utf8Decoder' is not a subtype of type 'StreamTransformer<Uint8List, String>' in type cast"，而且设置里面设置的下载路径是默认情况下的路径，在实际下载的时候默认填入这个下载路径，但是用户还是可以更改的，只不过那个输入框中默认填入了设置中的下载路径而已，你再完善一下
-
-1，历史记录不要按照分钟在那里导航，直接把所有会话放在历史中，你那样容易让人感觉历史没有记录上，就直接点进去就能看到所有历史
-2，不论是直连还是添加收藏主机，都应该在主页面有一个主机列表，而且应该提供编辑功能，编辑主机标记名/ip/端口/账户名/密码这五个参数，同时还包括删除，你也可以添加一些常规的设置，你这里只有长按显示详细信息，
-3，扫描不要另外开页面，也在当前页面给出搜索结果，注意与已添加的主机列表中间区别开来，已添加主机是已经确定了主机标记名/ip/端口/账户名/密码，而扫描得到的主机只有ip/端口，还有主机标记名/账户名/密码需要手动提供，同样提供子网手动输入框
-4，扫描得到的主机注意ip和端口已经确定了，但是我需要手动输入用户名和密码，你不要写死了固定是root账户，不一定是root，扫描得到的主机还需要进一步编辑，你得给出编辑入口
-5，你的会话内部顶部的路径是怎么回事，不是通过目标主机得来的吧，还有我执行cd根本不管用，你到底在干嘛，我执行cd Desktop && ls，结果你的顶部目录信息就变成了Desktop && ls，你该不会是在检查我的cd，然后匹配cd后面的字符串吧，太荒谬了，更无语的是我再执行pwd显示的还是/home/pngchg这样的家目录，根本没变，点击顶部目录时应该有下拉框显示该目录下属的文件及子目录，完全没有，把会话页面右上角的下载按钮撤了，不需要，底部左下角不是有文件上传与下载的图标吗，把那个浏览远程给我撤了，顶部目录不就是干这个的吗，不过这个目前也很无语，我不知道到底上传到对方哪个目录下了，下载的时候也不知道下载到手机哪个位置了，你倒是做好充分的确认呀，可以在设置里添加这个下载目录设置项
 ================================================================================
-  Android SSH Client — 修正后的完整技术路线 (v2)
+  Bug History (用户反馈记录)
 ================================================================================
 
-一、核心流程设计
-================================================================================
+v1 问题: SSH shell模式, broadcast stream数据丢失, 直连失败
+  - StreamController.broadcast() 无监听者时丢弃数据 → shell提示符丢失
+  - 直连和收藏路径不一致 → singleton provider 状态污染
+  - 解决: 改用 exec 模式, connect()前先disconnect()
 
-  主页 (主机收藏列表)
-  ├── 收藏的主机卡片列表 (Host对象: displayName, ip, port, username, password, fingerprint)
-  │   └─ 点击卡片 → [1]建立SSH连接 → [2]连接成功 → [3]跳转会话页(可操作)
-  │                              → [2]连接失败 → 弹窗报错, 不跳转
-  ├── [+] FAB: 添加收藏主机 (仅保存信息到DB, 不连接)
-  │   └─ 弹窗: IP / 端口 / 用户名 / 密码 / 备注 → 保存 → 主页刷新
-  └── [直连] 按钮: 手动输入凭据并立即连接 (不保存)
-      └─ 弹窗: IP / 端口 / 用户名 / 密码 → 点击连接
-          ├─ [1]建立SSH连接 → [2]成功 → 跳转会话页
-          └─ [2]失败 → 弹窗报错
+v2 问题: Utf8Decoder类型转换, 路径跟踪, 退出逻辑
+  - utf8.decoder as StreamTransformer<Uint8List, String> → 类型转换崩溃
+  - cd Desktop && ls → 路径变成 "Desktop && ls" (本地字符串解析)
+  - 退出对话框选项逻辑错误
+  - 解决: utf8.decodeStream(), 每条命令包装 cd <pwd> && <cmd> && pwd
 
-  会话页 (聊天式SSH)
-  ├─ 只读模式 (历史回放): 从DB读取消息, 底部显示"只读模式"
-  └─ 活动模式 (实时SSH):
-      ├─ 顶部: 路径指示器 (点击显示目录列表)
-      ├─ 中间: 消息列表 (命令/输出/系统)
-      ├─ 快捷命令Chips
-      └─ 输入栏 + 文件面板
+v3 问题: 主机覆盖, 扫描UI, SCP错误, 文件下载
+  - hostId用IP导致第二个同IP主机覆盖第一个
+  - Utf8Decoder SCP下载崩溃
+  - 下载文件不存在 (直接写 /storage/emulated/0/Download/ 被SAF拦截)
+  - 解决: UUID, FilePicker.saveFile(SAF)
 
-二、SSH 连接引擎 (修复要点)
-================================================================================
-
-  问题诊断:
-  ┌─────────────────────────────────────────────────────────────────────┐
-  │ 当前代码的问题:                                                      │
-  │ 1. ChatPage._connect() 不等待连接完成就允许用户输入, 导致发命令时   │
-  │    连接可能还没建立或已失败                                         │
-  │ 2. 发送命令 → 但shell的输出流没有被正确捕获展示:                    │
-  │    a. sendShellCommand() 只写入stdin, 不等待/捕获输出              │
-  │    b. _outputController 虽然监听了stdout, 但chat_page中订阅可能     │
-  │       存在时序问题 (建立连接后才订阅, 错过shell prompt等)           │
-  │ 3. 连接失败后仍然跳转到会话页, 用户看到空白页面                     │
-  └─────────────────────────────────────────────────────────────────────┘
-
-  修复方案:
-  ┌─────────────────────────────────────────────────────────────────────┐
-  │ 连接流程:                                                           │
-  │  1. 用户在主页触发连接(收藏卡片点击/直连按钮)                       │
-  │  2. 显示 LoadingDialog "正在连接..."                                │
-  │  3. SshClientService.connect():                                      │
-  │     a. TCP连接 (10秒超时)                                            │
-  │     b. SSH握手 + 主机密钥验证                                        │
-  │     c. 密码认证                                                      │
-  │     d. 打开 Shell channel + PTY                                      │
-  │     e. 订阅 stdout → _outputController                               │
-  │     f. 启动 keepalive                                                │
-  │  4. 连接成功 → 关闭LoadingDialog → Navigator.push(会话页)          │
-  │  5. 连接失败 → 关闭LoadingDialog → 弹窗显示错误原因                 │
-  │                                                                      │
-  │ 命令执行流程:                                                        │
-  │  1. 用户输入命令, 按发送                                             │
-  │  2. 创建 ChatMessage 写入DB (立即显示"已发送")                      │
-  │  3. sshService.sendShellCommand(cmd) → 写入stdin                    │
-  │  4. Shell处理命令, 输出到stdout                                      │
-  │  5. _outputSubscription 收到数据 → chat.addOutput() → DB存储+UI显示 │
-  │  6. 输出流持续, 直到命令完成 (解析shell提示符可判断命令结束)        │
-  └─────────────────────────────────────────────────────────────────────┘
-
-  改进: 会话页增加连接状态指示:
-  - 连接中: 显示 Loading 动画, 输入栏禁用
-  - 已连接: 输入栏可用, 显示"已连接"系统消息
-  - 连接失败: 显示错误消息, 输入栏禁用, 底部显示"重试"按钮
-
-三、Android 本地子网检测
-================================================================================
-
-  Android 平台限制:
-  - dart:io 的 NetworkInterface.list() 在 Android上不可靠
-  - InternetAddress 不提供 netmask
-  - 需要读取 Android 系统文件 /proc/net/route 获取网关和掩码
-
-  实现方案 (多层降级):
-  ┌─────────────────────────────────────────────────────────────────────┐
-  │ 第一层: 读取 /proc/net/route (Android 可用)                         │
-  │   文件格式: Iface, Destination, Gateway, Flags, RefCnt, Use,       │
-  │            Metric, Mask, MTU, Window, IRTT                         │
-  │   - 解析 Destination(目标网络) + Mask(子网掩码)                    │
-  │   - 转换为 CIDR 格式: ip/maskBits                                   │
-  │   示例:                                                             │
-  │   wlan0  00000000  0108A8C0  0003  0  0  0  00FFFFFF  0  0  0     │
-  │   → Destination=0.0.0.0(默认路由), Gateway=192.168.8.1            │
-  │   → Mask=00FFFFFF → 255.255.255.0 → /24                           │
-  │                                                                     │
-  │ 第二层: NetworkInterface.list() (Android 10+)                      │
-  │   获取第一个非回环 IPv4 地址                                        │
-  │   默认使用 /24 (因为无法获取 netmask)                               │
-  │                                                                     │
-  │ 第三层: 回退到 192.168.1.1/24                                       │
-  │                                                                     │
-  │ 用户的输入始终可编辑                                                   │
-  └─────────────────────────────────────────────────────────────────────┘
-
-  /proc/net/route 解析核心逻辑:
-    String destinationHex, maskHex;
-    读取 /proc/net/route 的每一行 (跳过标题行)
-    找到 Iface 非空且 Destination 非 00000000 的行
-    将 Destination 的 hex 转为 IP (小端序)
-    将 Mask 的 hex 转为 IP, 计算掩码位数
-
-四、收藏主机模型
-================================================================================
-
-  Host 模型需要存储连接凭据:
-  - hostId: SSH指纹 (TEXT PK)
-  - displayName: 用户自定义名称 (TEXT)
-  - currentIp: IP地址 (TEXT)
-  - port: SSH端口 (INT)
-  - username: SSH用户名 (TEXT)
-  - password: SSH密码 (TEXT)  — 新增字段
-  - macAddress: MAC地址 (TEXT, nullable)
-  - hostKeyFingerprint: SSH主机指纹 (TEXT)
-  - hostKeyAlgorithm: 密钥算法 (TEXT, nullable)
-  - sshBanner: SSH版本信息 (TEXT, nullable)
-  - firstSeenAt: 首次添加时间 (TEXT)
-  - lastSeenAt: 最后连接时间 (TEXT)
-  - connectionCount: 连接次数 (INT)
-  - notes: 备注 (TEXT, nullable)
-
-五、主题颜色方案
-================================================================================
-
-  亮蓝色主题 (Light + Dark 统一色系):
-
-  Light Mode:
-  - primary: #2196F3 (Material Blue)
-  - primaryContainer: #BBDEFB
-  - surface: #FFFFFF
-  - background: #F5F9FF (淡蓝白)
-  - 整体: 明亮、通透、天蓝色调
-
-  Dark Mode:
-  - primary: #64B5F6 (亮蓝)
-  - primaryContainer: #1565C0
-  - surface: #1A1C1E
-  - background: #0F1114
-  - 整体: 深色底 + 亮蓝点缀
+v4 问题: cd包装后下拉目录仅显示'..', 会话不保持, 删除无效
+  - ls -a 用 test -d 判断目录 → 多次SSH调用且不准确
+  - 保持会话后重新进入 → 新session, 对话清空
+  - 历史/主机删除无响应
+  - SCP失败连带SSH传输关闭 (Transport is closed)
+  - 下载无本地路径输入框
+  - 解决: ls -la 解析权限位'd'判断目录, ChatNotifier._activeSessions,
+    不显式 scpSession.close(), 双输入框(远程+本地), 已测通
 
 ================================================================================
-    
-写完这个文件后, 我将按此方案修改代码。
+  当前架构 (Current Architecture)
+================================================================================
+
+一、技术栈
+  Flutter 3.41.9 | Dart 3.11.5 | dartssh2 2.17.1 | Riverpod 2.6.1
+  最低 Android API 34 | Target API 35 | SQLite (sqlite3)
+
+二、核心设计
+  ┌──────────────────────────────────────────────────────────────┐
+  │  主页 (主机列表 + 内嵌扫描)                                   │
+  │  ├── 已添加主机: 带 已连接/未连接 状态                       │
+  │  │   └─ 点击 → 连接验证 → 进入会话                           │
+  │  ├── 局域网扫描: ExpansionTile, CIDR输入, 流式结果           │
+  │  │   └─ 结果: '添加'→ 弹凭据编辑 → 存入主机列表              │
+  │  ├── (+) FAB: 添加收藏主机                                   │
+  │  └── (⚡) FAB: 直连(自动加入收藏)                            │
+  │                                                                │
+  │  会话页                                                       │
+  │  ├── AppBar: 标题 + 在线指示器 + 历史/设置图标               │
+  │  ├── 路径栏: 点击显示子目录下拉 (ls -la解析'd'标记)          │
+  │  │   └─ 子目录点击 → cd <dir> → 更新pwd                     │
+  │  ├── 消息列表: 命令(右) / 输出(左) / 系统(中)               │
+  │  ├── 快捷命令Chips                                           │
+  │  ├── 文件面板: 上传/下载                                     │
+  │  └── 输入栏 (连接后启用)                                     │
+  │                                                                │
+  │  历史页: 按主机分组显示所有消息(平铺)                        │
+  │  设置页: 深色模式 + 下载目录                                 │
+  └──────────────────────────────────────────────────────────────┘
+
+三、命令执行引擎
+  每条命令包装为: cd "<当前pwd>" && <用户命令> && pwd
+  输出解析: 末行 = 新pwd (更新顶部栏, 不显示在对话)
+           其余行 = 命令输出 (显示在对话)
+
+四、路径下拉 (目录浏览)
+  点击路径栏 → execute('cd "<pwd>" && ls -la && pwd')
+  解析: 权限位首字符='d' → 目录 → 加入列表
+  点击目录 → setDirectory(newPwd) + execute('cd "<newPwd>"')
+  收起: 点击路径栏 或 点击透明遮罩
+
+五、会话生命周期
+  ChatNotifier._activeSessions: Map<hostId, Session>
+  - 进入: startNewSession(hostId) → 检查_activeSessions → 复用或新建
+  - 保持会话: 不调用endSession → _activeSessions保留 → 下次复用
+  - 断开会话: endSession(hostId) + sshConnectionProvider.disconnect()
+  - 删除限制: 如果会话活跃(在_activeSessions中) → 提示先断开
+
+六、文件传输 (SCP)
+  上传: 输入远程路径(默认pwd) + FilePicker选取本地文件
+  下载: 输入远程路径(含文件名,默认pwd/) + 本地目录(默认设置值)
+  存储: 使用 FilePicker.platform.saveFile() (SAF, Android 14+)
+
+七、SSH会话管理
+  连接: SSHSocket.connect() → SSHClient() → authenticate
+  命令: client.execute(cmd, pty) → 新channel → utf8.decodeStream
+  文件: client.execute('scp -t/-f ...') → 新channel → 独立操作
+  断开: client.close() → client=null → activeConnection=null
+  SCP与命令互不影响: 各自独立channel, 异常不传播到transport
+
+八、主题
+  亮蓝 #2196F3 (light) / #64B5F6 (dark)
+  Material3, colorSchemeSeed
+  深色模式切换 (Provider<bool>)
+
+九、数据库表 (SQLite)
+  hosts: host_id(UUID PK), display_name, current_ip, port,
+         username, password, mac_address, host_key_fingerprint, ...
+  sessions: session_id(PK), host_id(FK), start_time, end_time, ...
+  chat_messages: message_id(PK), session_id(FK), type, content, ...
+  transfer_tasks: transfer_id(PK), session_id(FK), direction, ...
+  quick_commands: command_id(PK AUTO), label, command, category, ...
+
+十、关键Provider
+  sshClientServiceProvider    → SshClientService (singleton)
+  sshConnectionProvider       → SshConnectionNotifier (state machine)
+  chatProvider                → ChatNotifier (messages + sessions)
+  transferProvider            → TransferNotifier (file transfers)
+  hostDaoProvider             → HostDao (async)
+  sessionDaoProvider          → SessionDao (async)
+  messageDaoProvider          → MessageDao (async)
+  isDarkModeProvider          → bool
+  downloadDirProvider         → String (下载目录)
 ================================================================================
