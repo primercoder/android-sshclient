@@ -8,7 +8,8 @@ class LanScanner {
   Future<List<ScanResult>> scan({
     required String cidr,
     int port = 22,
-    int timeoutMs = 500,
+    int timeoutMs = 1000,
+    void Function(ScanResult result)? onResult,
   }) async {
     final results = <ScanResult>[];
     final ips = _cidrToIps(cidr);
@@ -36,12 +37,13 @@ class LanScanner {
 
         await socket.close();
 
-        results.add(ScanResult(
-          ip: ip,
-          port: port,
+        final result = ScanResult(
+          ip: ip, port: port,
           sshBanner: banner?.trim(),
           responseTimeMs: stopwatch.elapsedMilliseconds,
-        ));
+        );
+        results.add(result);
+        onResult?.call(result);
       } catch (_) {}
     }));
 

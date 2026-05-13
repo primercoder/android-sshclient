@@ -37,8 +37,6 @@ class ChatFilePanel extends ConsumerWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text('文件传输', style: theme.textTheme.labelLarge),
-          Text('上传到: $currentDirectory',
-              style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey[600])),
           const SizedBox(height: 8),
           Row(
             children: [
@@ -61,50 +59,50 @@ class ChatFilePanel extends ConsumerWidget {
   }
 
   Future<void> _uploadFile(BuildContext context, WidgetRef ref) async {
-    final result = await FilePicker.platform.pickFiles();
-    if (result == null || result.files.isEmpty) return;
+    final remotePathCtrl = TextEditingController(text: currentDirectory);
 
-    final file = result.files.first;
+    final fileResult = await FilePicker.platform.pickFiles();
+    if (fileResult == null || fileResult.files.isEmpty) return;
+    final file = fileResult.files.first;
     if (file.path == null) return;
 
-    final sshService = ref.read(sshClientServiceProvider);
-    if (sshService.client == null) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('SSH 未连接')),
-        );
-      }
-      return;
-    }
-
-    final remotePath = '$currentDirectory/${file.name}';
-
-    final confirm = await showDialog<bool>(
+    final remotePath = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('上传确认'),
-        content: Text('上传 ${file.name} (${_formatBytes(file.size)})\n到: $remotePath'),
+        title: const Text('上传路径'),
+        content: TextField(
+          controller: remotePathCtrl,
+          decoration: const InputDecoration(
+            labelText: '远程路径',
+            hintText: '/home/user/',
+            prefixIcon: Icon(Icons.folder),
+          ),
+        ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('上传')),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, remotePathCtrl.text.trim()), child: const Text('上传')),
         ],
       ),
     );
-    if (confirm != true || !context.mounted) return;
+    if (remotePath == null || remotePath.isEmpty || !context.mounted) return;
 
-    final transferService = ScpTransferService(sshService.client!);
-    final transferNotifier = ref.read(transferProvider.notifier);
+    final sshService = ref.read(sshClientServiceProvider);
+    if (sshService.client == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('SSH 未连接')));
+      return;
+    }
 
     try {
+      final transferService = ScpTransferService(sshService.client!);
       final task = await transferService.uploadFile(
         localPath: file.path!,
-        remotePath: currentDirectory,
+        remotePath: remotePath,
         sessionId: sessionId,
         transferId: const Uuid().v4(),
       );
-      await transferNotifier.addTransfer(task);
+      await ref.read(transferProvider.notifier).addTransfer(task);
       final chat = ref.read(chatProvider.notifier);
-      await chat.addSystemMessage('📄 上传完成: ${file.name} 到 $remotePath');
+      await chat.addSystemMessage('📄 上传完成: ${file.name} → $remotePath');
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -116,26 +114,18 @@ class ChatFilePanel extends ConsumerWidget {
 
   void _showDownloadDialog(BuildContext context, WidgetRef ref) {
     final remoteCtrl = TextEditingController(text: '$currentDirectory/');
-    final downloadDir = ref.read(downloadDirProvider);
 
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('下载文件'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: remoteCtrl,
-              decoration: const InputDecoration(
-                labelText: '远程路径',
-                hintText: '/home/user/file.txt',
-                prefixIcon: Icon(Icons.terminal),
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text('下载到: $downloadDir', style: TextStyle(fontSize: 12, color: Colors.grey[600])),
-          ],
+        content: TextField(
+          controller: remoteCtrl,
+          decoration: const InputDecoration(
+            labelText: '远程路径',
+            hintText: '/home/user/file.txt',
+            prefixIcon: Icon(Icons.terminal),
+          ),
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
@@ -143,23 +133,28 @@ class ChatFilePanel extends ConsumerWidget {
             final remotePath = remoteCtrl.text.trim();
             if (remotePath.isEmpty) return;
             Navigator.pop(ctx);
-            await _downloadFile(remotePath, downloadDir, context, ref);
+            await _downloadFile(remotePath, context, ref);
           }, child: const Text('下载')),
         ],
       ),
     );
   }
 
-  Future<void> _downloadFile(
-      String remotePath, String localDir, BuildContext context, WidgetRef ref) async {
+  Future<void> _downloadFile(String remotePath, BuildContext context, WidgetRef ref) async {
     final filename = remotePath.split('/').last;
-    final localPath = '$localDir/$filename';
+
+    // Use SAF to pick save location (works on Android 14+)
+    final savePath = await FilePicker.platform.saveFile(
+      dialogTitle: '保存文件',
+      fileName: filename,
+    );
+    if (savePath == null || !context.mounted) return;
 
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('下载确认'),
-        content: Text('下载 $remotePath\n到: $localPath'),
+        content: Text('下载 $remotePath\n到 $savePath'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
           FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('下载')),
@@ -174,19 +169,24 @@ class ChatFilePanel extends ConsumerWidget {
       return;
     }
 
-    final transferService = ScpTransferService(sshService.client!);
-    final transferNotifier = ref.read(transferProvider.notifier);
-
     try {
+      final transferService = ScpTransferService(sshService.client!);
       final task = await transferService.downloadFile(
         remotePath: remotePath,
-        localPath: localPath,
+        localPath: savePath,
         sessionId: sessionId,
         transferId: const Uuid().v4(),
       );
-      await transferNotifier.addTransfer(task);
+
+      await ref.read(transferProvider.notifier).addTransfer(task);
       final chat = ref.read(chatProvider.notifier);
-      await chat.addSystemMessage('📥 下载完成: $filename 到 $localPath');
+      await chat.addSystemMessage('📥 下载完成: $filename → $savePath');
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('已保存到: $savePath')),
+        );
+      }
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -194,12 +194,6 @@ class ChatFilePanel extends ConsumerWidget {
         );
       }
     }
-  }
-
-  String _formatBytes(int bytes) {
-    if (bytes < 1024) return '$bytes B';
-    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
-    return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
   }
 }
 

@@ -67,6 +67,17 @@ class SessionDao {
     ]);
   }
 
+  void deleteSessionsByHostId(String hostId) {
+    _db.execute('DELETE FROM sessions WHERE host_id = ?', [hostId]);
+  }
+
+  void deleteSession(String sessionId) {
+    _db.execute('DELETE FROM sessions WHERE session_id = ?', [sessionId]);
+  }
+
+  /// Expose raw db for advanced operations
+  Database get db => _db;
+
   Session _fromRow(Row row) => Session(
     sessionId: row['session_id'] as String,
     hostId: row['host_id'] as String,

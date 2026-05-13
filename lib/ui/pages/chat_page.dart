@@ -116,23 +116,30 @@ class _ChatPageState extends ConsumerState<ChatPage> {
 
     final chat = ref.read(chatProvider.notifier);
     final sshService = ref.read(sshClientServiceProvider);
+    final currentPwd = ref.read(chatProvider).currentDirectory;
 
     await chat.addCommand(command);
 
     try {
-      final output = await sshService.execute(command);
-      if (output.isNotEmpty) {
-        await chat.addOutput(output);
+      // Wrap: cd to current dir, run command, then pwd to learn new dir
+      final wrapped = 'cd "$currentPwd" && $command && pwd';
+      final raw = await sshService.execute(wrapped);
+      final output = raw.trim();
+
+      if (output.isEmpty) return;
+
+      final lines = output.split('\n');
+      final newPwd = lines.last.trim();
+
+      if (newPwd.isNotEmpty && newPwd.startsWith('/')) {
+        chat.setDirectory(newPwd);
       }
 
-      // Always query actual pwd after every command to track real path
-      try {
-        final pwd = await sshService.execute('pwd');
-        final dir = pwd.trim();
-        if (dir.isNotEmpty) {
-          chat.setDirectory(dir);
-        }
-      } catch (_) {}
+      // Everything except the last line (the pwd result) is the command output
+      if (lines.length > 1) {
+        final cmdOut = lines.sublist(0, lines.length - 1).join('\n');
+        await chat.addOutput(cmdOut);
+      }
     } catch (e) {
       await chat.addSystemMessage('命令执行错误: $e');
     }

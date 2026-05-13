@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:ssh_client/data/models/session.dart';
 import 'package:ssh_client/data/models/host.dart';
 import 'package:ssh_client/data/models/chat_message.dart';
 import 'package:ssh_client/providers/providers.dart';
@@ -36,13 +37,14 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
 
     final result = <_HostWithMessages>[];
     for (final entry in hostMap.entries) {
+      final hostSessions = allSessions.where((s) => s.hostId == entry.key).toList();
       final msgs = <ChatMessage>[];
-      for (final s in allSessions.where((s) => s.hostId == entry.key)) {
+      for (final s in hostSessions) {
         msgs.addAll(msgDao.getMessagesBySession(s.sessionId));
       }
       msgs.sort((a, b) => a.timestamp.compareTo(b.timestamp));
       if (msgs.isNotEmpty) {
-        result.add(_HostWithMessages(host: entry.value, messages: msgs));
+        result.add(_HostWithMessages(host: entry.value, sessions: hostSessions, messages: msgs));
       }
     }
     result.sort((a, b) => b.messages.last.timestamp.compareTo(a.messages.last.timestamp));
@@ -89,7 +91,38 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
                     subtitle: Text(
                       '${item.messages.length} 条消息 | ${_formatDate(item.messages.last.timestamp)}',
                     ),
-                    trailing: const Icon(Icons.chevron_right),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.chevron_right),
+                        const SizedBox(width: 4),
+                        GestureDetector(
+                          onTap: () async {
+                            final confirm = await showDialog<bool>(
+                              context: context,
+                              builder: (ctx) => AlertDialog(
+                                title: const Text('删除历史'),
+                                content: Text('删除 ${item.host.displayName} 的所有会话记录？'),
+                                actions: [
+                                  TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+                                  FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('删除'), style: FilledButton.styleFrom(backgroundColor: Colors.red)),
+                                ],
+                              ),
+                            );
+                            if (confirm == true) {
+                              final sessDao = await ref.read(sessionDaoProvider.future);
+                              final msgDao = await ref.read(messageDaoProvider.future);
+                              for (final s in item.sessions) {
+                                msgDao.deleteMessagesBySession(s.sessionId);
+                                sessDao.deleteSession(s.sessionId);
+                              }
+                              _load();
+                            }
+                          },
+                          child: Icon(Icons.delete_outline, size: 18, color: Colors.red[300]),
+                        ),
+                      ],
+                    ),
                     onTap: () => Navigator.push(context,
                         MaterialPageRoute(builder: (_) =>
                             _HistoryReplayPage(host: item.host, messages: item.messages))),
@@ -107,8 +140,9 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
 
 class _HostWithMessages {
   final Host host;
+  final List<Session> sessions;
   final List<ChatMessage> messages;
-  const _HostWithMessages({required this.host, required this.messages});
+  const _HostWithMessages({required this.host, required this.sessions, required this.messages});
 }
 
 class _HistoryReplayPage extends StatelessWidget {

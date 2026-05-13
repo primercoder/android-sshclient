@@ -57,7 +57,13 @@ class _HomePageState extends ConsumerState<HomePage> {
     setState(() { _scanError = null; _isScanning = true; _scanResults = []; });
 
     try {
-      final results = await scanner.scan(cidr: cidr, timeoutMs: 1000);
+      final results = await scanner.scan(
+        cidr: cidr,
+        timeoutMs: 1000,
+        onResult: (r) {
+          if (mounted) setState(() => _scanResults.add(r));
+        },
+      );
       if (mounted) setState(() => _scanResults = results);
     } catch (e) {
       if (mounted) setState(() => _scanError = '扫描出错: $e');
@@ -361,6 +367,7 @@ class _HomePageState extends ConsumerState<HomePage> {
                         ..._scanResults.map((r) => _ScanResultCard(
                           result: r,
                           onAdd: () => _showScanAddDialog(r),
+                          onDismiss: () => setState(() => _scanResults.remove(r)),
                         )),
                     ]),
                   ),
@@ -388,13 +395,14 @@ class _HomePageState extends ConsumerState<HomePage> {
       floatingActionButton: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          FloatingActionButton.small(
+          FloatingActionButton(
             heroTag: 'direct',
+            mini: false,
             onPressed: () => _showDirectConnectDialog(),
             backgroundColor: theme.colorScheme.secondaryContainer,
-            child: const Icon(Icons.flash_on, size: 20),
+            child: const Icon(Icons.flash_on),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 12),
           FloatingActionButton(
             heroTag: 'add',
             onPressed: _showAddFavoriteDialog,
@@ -600,8 +608,9 @@ class _HostCard extends StatelessWidget {
 class _ScanResultCard extends StatelessWidget {
   final ScanResult result;
   final VoidCallback onAdd;
+  final VoidCallback onDismiss;
 
-  const _ScanResultCard({required this.result, required this.onAdd});
+  const _ScanResultCard({required this.result, required this.onAdd, required this.onDismiss});
 
   @override
   Widget build(BuildContext context) {
@@ -621,10 +630,20 @@ class _ScanResultCard extends StatelessWidget {
         subtitle: result.sshBanner != null
             ? Text(result.sshBanner!, style: TextStyle(fontSize: 10, color: Colors.grey[500]))
             : Text('${result.responseTimeMs}ms', style: TextStyle(fontSize: 10, color: Colors.grey[500])),
-        trailing: FilledButton.tonal(
-          onPressed: onAdd,
-          style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4)),
-          child: const Text('添加', style: TextStyle(fontSize: 11)),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            FilledButton.tonal(
+              onPressed: onAdd,
+              style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4)),
+              child: const Text('添加', style: TextStyle(fontSize: 11)),
+            ),
+            const SizedBox(width: 4),
+            GestureDetector(
+              onTap: onDismiss,
+              child: Icon(Icons.close, size: 16, color: Colors.grey[400]),
+            ),
+          ],
         ),
       ),
     );

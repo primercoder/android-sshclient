@@ -68,32 +68,44 @@ class _ChatPathIndicatorState extends ConsumerState<ChatPathIndicator> {
   }
 
   void _showDirDropdown() async {
-    if (_overlay != null) { _overlay!.remove(); _overlay = null; return; }
+    if (_overlay != null) {
+      _overlay!.remove();
+      _overlay = null;
+      return;
+    }
 
     setState(() => _loading = true);
     final path = ref.read(chatProvider).currentDirectory;
     final ssh = ref.read(sshClientServiceProvider);
 
     try {
-      final output = await ssh.execute('ls -a "$path"');
-      final dirs = <String>[];
-      for (final line in output.split('\n')) {
-        final name = line.trim();
-        if (name.isEmpty || name == '.' || name == '..') continue;
-        dirs.add(name);
+      final output = await ssh.execute('cd "$path" && ls -a && pwd');
+      final lines = output.trim().split('\n');
+      final newPwd = lines.isNotEmpty ? lines.last.trim() : path;
+      if (newPwd.startsWith('/')) {
+        ref.read(chatProvider.notifier).setDirectory(newPwd);
       }
 
-      // Now check which are directories
-      final realDirs = <String>['..'];
-      for (final d in dirs) {
+      // Collect directory names from ls -a
+      final names = <String>[];
+      for (final line in lines) {
+        final name = line.trim();
+        if (name.isEmpty || name == path || name == '.' ||
+            name.startsWith('/') || name == newPwd) continue;
+        names.add(name);
+      }
+
+      // Find which are directories
+      final dirs = <String>['..'];
+      for (final d in names) {
         try {
-          final t = await ssh.execute('test -d "$path/$d" && echo dir || echo not');
-          if (t.trim() == 'dir') realDirs.add(d);
+          final t = await ssh.execute('cd "$newPwd" && test -d "$d" && echo d');
+          if (t.trim() == 'd') dirs.add(d);
         } catch (_) {}
       }
 
       if (!mounted) return;
-      setState(() { _dirs = realDirs; _loading = false; });
+      setState(() { _dirs = dirs; _loading = false; });
       _showOverlay();
     } catch (e) {
       if (!mounted) return;
@@ -112,55 +124,72 @@ class _ChatPathIndicatorState extends ConsumerState<ChatPathIndicator> {
     _overlay = OverlayEntry(
       builder: (ctx) => Stack(
         children: [
-          GestureDetector(onTap: () { _overlay?.remove(); _overlay = null; }, child: Container(color: Colors.transparent)),
+          GestureDetector(
+            onTap: () { _overlay?.remove(); _overlay = null; },
+            child: Container(color: Colors.transparent),
+          ),
           Positioned(
-            left: position.dx, top: position.dy + box.size.height,
-            right: MediaQuery.of(context).size.width - position.dx,
+            left: position.dx,
+            top: position.dy + box.size.height,
+            right: 12,
             child: Material(
-              elevation: 6, borderRadius: BorderRadius.circular(10),
+              elevation: 8,
+              borderRadius: BorderRadius.circular(10),
+              clipBehavior: Clip.antiAlias,
               child: Container(
-                constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.35),
+                constraints: BoxConstraints(
+                  maxHeight: MediaQuery.of(context).size.height * 0.4,
+                ),
                 decoration: BoxDecoration(
                   color: Theme.of(context).colorScheme.surface,
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: Column(mainAxisSize: MainAxisSize.min, children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                      borderRadius: const BorderRadius.only(topLeft: Radius.circular(10), topRight: Radius.circular(10)),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                      ),
+                      child: Row(children: [
+                        Text('子目录', style: Theme.of(context).textTheme.labelSmall),
+                        const Spacer(),
+                        GestureDetector(
+                          onTap: () { _overlay?.remove(); _overlay = null; },
+                          child: const Icon(Icons.close, size: 16),
+                        ),
+                      ]),
                     ),
-                    child: Row(children: [
-                      Text('子目录', style: Theme.of(context).textTheme.labelSmall),
-                      const Spacer(),
-                      GestureDetector(onTap: () { _overlay?.remove(); _overlay = null; }, child: const Icon(Icons.close, size: 16)),
-                    ]),
-                  ),
-                  Flexible(
-                    child: _dirs.isEmpty
-                        ? const Padding(padding: EdgeInsets.all(16), child: Text('无子目录'))
-                        : ListView.builder(
-                            shrinkWrap: true, padding: EdgeInsets.zero,
-                            itemCount: _dirs.length,
-                            itemBuilder: (context, index) {
-                              final dir = _dirs[index];
-                              return ListTile(
-                                dense: true,
-                                leading: Icon(dir == '..' ? Icons.subdirectory_arrow_left : Icons.folder,
-                                    size: 18, color: Colors.amber[700]),
-                                title: Text(dir, style: const TextStyle(fontSize: 13, fontFamily: 'monospace')),
-                                trailing: Icon(Icons.chevron_right, size: 16, color: Colors.grey[400]),
-                                onTap: () {
-                                  _overlay?.remove();
-                                  _overlay = null;
-                                  _cdInto(dir);
-                                },
-                              );
-                            },
-                          ),
-                  ),
-                ]),
+                    Flexible(
+                      child: _dirs.isEmpty
+                          ? const Padding(padding: EdgeInsets.all(16), child: Text('空目录'))
+                          : ListView.builder(
+                              shrinkWrap: true,
+                              padding: EdgeInsets.zero,
+                              itemCount: _dirs.length,
+                              itemBuilder: (context, index) {
+                                final dir = _dirs[index];
+                                return ListTile(
+                                  dense: true,
+                                  leading: Icon(
+                                    dir == '..' ? Icons.subdirectory_arrow_left : Icons.folder,
+                                    size: 18, color: Colors.amber[700],
+                                  ),
+                                  title: Text(dir, style: const TextStyle(fontSize: 13, fontFamily: 'monospace')),
+                                  trailing: Icon(Icons.chevron_right, size: 16, color: Colors.grey[400]),
+                                  onTap: () {
+                                    _overlay?.remove();
+                                    _overlay = null;
+                                    _cdInto(dir);
+                                  },
+                                );
+                              },
+                            ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -184,7 +213,6 @@ class _ChatPathIndicatorState extends ConsumerState<ChatPathIndicator> {
     }
 
     ref.read(chatProvider.notifier).setDirectory(newPath);
-
     ssh.execute('cd "$newPath"').catchError((_) => '');
   }
 }
