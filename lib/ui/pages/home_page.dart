@@ -125,61 +125,81 @@ class _HomePageState extends ConsumerState<HomePage> {
     final portCtrl = TextEditingController(text: '22');
     final userCtrl = TextEditingController(text: 'root');
     final passCtrl = TextEditingController();
+    final formKey = GlobalKey<FormState>();
 
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('连接主机'),
         content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: ipCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'IP 地址',
-                  prefixIcon: Icon(Icons.computer),
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(context).viewInsets.bottom,
+          ),
+          child: Form(
+            key: formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextFormField(
+                  controller: ipCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'IP 地址',
+                    prefixIcon: Icon(Icons.computer),
+                    hintText: '192.168.1.100',
+                  ),
+                  keyboardType: TextInputType.url,
+                  validator: (v) {
+                    if (v == null || v.isEmpty) return '请输入 IP';
+                    final parts = v.trim().split('.');
+                    if (parts.length != 4) return 'IP 格式错误';
+                    for (final p in parts) {
+                      final n = int.tryParse(p);
+                      if (n == null || n < 0 || n > 255) return 'IP 格式错误';
+                    }
+                    return null;
+                  },
                 ),
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: portCtrl,
-                decoration: const InputDecoration(
-                  labelText: '端口',
-                  prefixIcon: Icon(Icons.numbers),
+                const SizedBox(height: 8),
+                TextFormField(
+                  controller: portCtrl,
+                  decoration: const InputDecoration(
+                    labelText: '端口',
+                    prefixIcon: Icon(Icons.numbers),
+                  ),
+                  keyboardType: TextInputType.number,
                 ),
-                keyboardType: TextInputType.number,
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: userCtrl,
-                decoration: const InputDecoration(
-                  labelText: '用户名',
-                  prefixIcon: Icon(Icons.person),
+                const SizedBox(height: 8),
+                TextFormField(
+                  controller: userCtrl,
+                  decoration: const InputDecoration(
+                    labelText: '用户名',
+                    prefixIcon: Icon(Icons.person),
+                  ),
+                  validator: (v) => (v == null || v.isEmpty) ? '请输入用户名' : null,
                 ),
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: passCtrl,
-                decoration: const InputDecoration(
-                  labelText: '密码',
-                  prefixIcon: Icon(Icons.lock),
+                const SizedBox(height: 8),
+                TextFormField(
+                  controller: passCtrl,
+                  decoration: const InputDecoration(
+                    labelText: '密码',
+                    prefixIcon: Icon(Icons.lock),
+                  ),
+                  obscureText: true,
                 ),
-                obscureText: true,
-              ),
-            ],
+              ],
+            ),
           ),
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx),
               child: const Text('取消')),
           FilledButton(onPressed: () {
+            if (!(formKey.currentState?.validate() ?? false)) return;
+
             final ip = ipCtrl.text.trim();
             final port = int.tryParse(portCtrl.text.trim()) ?? 22;
             final user = userCtrl.text.trim();
             final pass = passCtrl.text;
-
-            if (ip.isEmpty || user.isEmpty) return;
 
             Navigator.pop(ctx);
             Navigator.push(context,
