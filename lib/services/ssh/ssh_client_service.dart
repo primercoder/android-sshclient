@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:typed_data';
 import 'package:dartssh2/dartssh2.dart';
 import 'package:ssh_client/data/models/ssh_connection_info.dart';
 
@@ -31,6 +30,7 @@ class SshClientService {
     await _client!.authenticated;
   }
 
+  /// Execute a command and return stdout as a string.
   Future<String> execute(String command) async {
     if (_client == null) throw Exception('SSH not connected');
 
@@ -39,17 +39,22 @@ class SshClientService {
       pty: const SSHPtyConfig(width: 160),
     );
 
-    final output = await session.stdout
-        .transform(utf8.decoder as StreamTransformer<Uint8List, String>)
-        .join();
-
+    final output = await utf8.decodeStream(session.stdout);
     await session.done;
     return output;
   }
 
+  /// Execute pwd to get the current working directory on the remote host.
+  Future<String> getHomeDirectory() async {
+    final output = await execute('echo ~');
+    return output.trim();
+  }
+
   Future<void> disconnect() async {
-    _client?.close();
-    _client = null;
-    _connectionInfo = null;
+    if (_client != null) {
+      try { _client!.close(); } catch (_) {}
+      _client = null;
+      _connectionInfo = null;
+    }
   }
 }

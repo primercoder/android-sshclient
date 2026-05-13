@@ -88,6 +88,14 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     setState(() => _connected = true);
     await chat.startNewSession(hostId);
     await chat.addSystemMessage('连接已建立 | $_subtitle');
+
+    try {
+      final homeDir = await sshService.getHomeDirectory();
+      if (homeDir.isNotEmpty) {
+        chat.setDirectory(homeDir);
+      }
+    } catch (_) {}
+
     await chat.addSystemMessage('提示: 在下方输入命令，按回车发送');
   }
 
@@ -136,22 +144,27 @@ class _ChatPageState extends ConsumerState<ChatPage> {
 
   Future<bool> _onWillPop() async {
     if (_connected && !widget.readOnly) {
-      final result = await showDialog<bool>(
+      final result = await showDialog<String>(
         context: context,
         builder: (ctx) => AlertDialog(
-          title: const Text('断开 SSH 连接？'),
-          content: const Text('退出会话将关闭 SSH 连接。'),
+          title: const Text('离开会话'),
+          content: const Text('SSH 连接仍保持活跃，可在主页管理。'),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('留在会话')),
-            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('断开')),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, 'keep'),
+              child: const Text('保持会话'),
+            ),
+            FilledButton(
+              onPressed: () {
+                ref.read(sshConnectionProvider.notifier).disconnect();
+                Navigator.pop(ctx, 'disconnect');
+              },
+              child: const Text('断开连接'),
+            ),
           ],
         ),
       );
-      if (result == true) {
-        ref.read(sshConnectionProvider.notifier).disconnect();
-        return true;
-      }
-      return false;
+      return result != null; // leave regardless
     }
     return true;
   }

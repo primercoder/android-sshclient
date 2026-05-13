@@ -313,6 +313,7 @@ class _HomePageState extends ConsumerState<HomePage> {
   }
 
   Widget _buildHostList(ThemeData theme) {
+    ref.watch(sshConnectionProvider); // rebuild on connection changes
     return Column(children: [
       _buildActionButtons(theme),
       Expanded(
@@ -321,14 +322,17 @@ class _HomePageState extends ConsumerState<HomePage> {
           itemCount: _hosts.length,
           itemBuilder: (context, index) {
             final host = _hosts[index];
-            final connected = _isHostConnected(host);
+            final activeConn = ref.read(sshConnectionProvider.notifier).activeConnection;
+            final connected = activeConn != null &&
+                activeConn.host == host.currentIp &&
+                activeConn.port == host.port;
             return _HostCard(
               host: host,
               connected: connected,
               onTap: () => _connectAndNavigate(host),
               onLongPress: () => Navigator.push(context,
                   MaterialPageRoute(builder: (_) => HostDetailPage(host: host))),
-              onConnectToggle: connected ? () => _disconnectHost(host) : null,
+              onDisconnect: connected ? () => _disconnectHost(host) : null,
             );
           },
         ),
@@ -364,11 +368,11 @@ class _HostCard extends StatelessWidget {
   final bool connected;
   final VoidCallback onTap;
   final VoidCallback onLongPress;
-  final VoidCallback? onConnectToggle;
+  final VoidCallback? onDisconnect;
 
   const _HostCard({
     required this.host, required this.connected,
-    required this.onTap, required this.onLongPress, this.onConnectToggle,
+    required this.onTap, required this.onLongPress, this.onDisconnect,
   });
 
   @override
@@ -381,47 +385,44 @@ class _HostCard extends StatelessWidget {
         leading: CircleAvatar(
           backgroundColor: connected
               ? Colors.green.withValues(alpha: 0.2)
-              : theme.colorScheme.primaryContainer,
+              : theme.colorScheme.surfaceContainerHighest,
           child: Icon(
             connected ? Icons.check_circle : Icons.dns,
-            color: connected ? Colors.green : theme.colorScheme.primary,
+            color: connected ? Colors.green : Colors.grey,
           ),
         ),
         title: Text(host.displayName.isNotEmpty ? host.displayName : host.currentIp),
         subtitle: Text('${host.username}@${host.currentIp}:${host.port}',
             style: theme.textTheme.bodySmall),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (connected)
-              GestureDetector(
-                onTap: onConnectToggle,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        trailing: GestureDetector(
+          onTap: connected ? onDisconnect : null,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: connected
+                  ? Colors.green.withValues(alpha: 0.15)
+                  : Colors.grey.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 7, height: 7,
                   decoration: BoxDecoration(
-                    color: Colors.green.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Container(width: 6, height: 6, decoration: const BoxDecoration(color: Colors.green, shape: BoxShape.circle)),
-                      const SizedBox(width: 4),
-                      Text('已连接', style: TextStyle(fontSize: 11, color: Colors.green[700])),
-                    ],
+                    color: connected ? Colors.green : Colors.grey,
+                    shape: BoxShape.circle,
                   ),
                 ),
-              ),
-            const SizedBox(width: 4),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: Colors.green.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Text('${host.connectionCount} 次', style: TextStyle(fontSize: 11, color: Colors.green[700])),
+                const SizedBox(width: 5),
+                Text(
+                  connected ? '已连接' : '未连接',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500,
+                      color: connected ? Colors.green[700] : Colors.grey[600]),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
         onTap: onTap,
         onLongPress: onLongPress,
