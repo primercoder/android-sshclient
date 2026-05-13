@@ -1,6 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:sqlite3/sqlite3.dart';
-import 'package:ssh_client/core/theme/app_theme.dart';
 import 'package:ssh_client/data/database/app_database.dart';
 import 'package:ssh_client/data/database/dao/host_dao.dart';
 import 'package:ssh_client/data/database/dao/session_dao.dart';
@@ -48,6 +47,4 @@ final lanScannerProvider = Provider<LanScanner>((ref) {
   return LanScanner();
 });
 
-final themeProvider = StateProvider<AppThemeType>((ref) {
-  return AppThemeType.green;
-});
+final isDarkModeProvider = StateProvider<bool>((ref) => false);

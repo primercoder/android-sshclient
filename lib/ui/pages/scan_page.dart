@@ -1,7 +1,10 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:ssh_client/data/models/scan_result.dart';
 import 'package:ssh_client/providers/providers.dart';
+import 'package:ssh_client/ui/pages/chat_page.dart';
+import 'package:ssh_client/data/models/direct_connect_info.dart';
 
 class ScanPage extends ConsumerStatefulWidget {
   const ScanPage({super.key});
@@ -13,15 +16,38 @@ class ScanPage extends ConsumerStatefulWidget {
 class _ScanPageState extends ConsumerState<ScanPage> {
   List<ScanResult> _results = [];
   bool _isScanning = false;
+  String _subnet = '192.168.1';
+
+  @override
+  void initState() {
+    super.initState();
+    _detectSubnet();
+  }
+
+  void _detectSubnet() async {
+    try {
+      final interfaces = await NetworkInterface.list();
+      for (final interface in interfaces) {
+        for (final addr in interface.addresses) {
+          if (addr.type == InternetAddressType.IPv4 &&
+              !addr.isLoopback &&
+              addr.address.startsWith('192.168.')) {
+            final parts = addr.address.split('.');
+            setState(() => _subnet = '${parts[0]}.${parts[1]}.${parts[2]}');
+            return;
+          }
+        }
+      }
+    } catch (_) {}
+  }
 
   Future<void> _startScan() async {
     setState(() => _isScanning = true);
     final scanner = ref.read(lanScannerProvider);
-    final subnet = scanner.getLocalSubnet();
 
     try {
-      final results = await scanner.scan(subnet: subnet);
-      setState(() => _results = results);
+      final results = await scanner.scan(subnet: _subnet);
+      if (mounted) setState(() => _results = results);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -29,8 +55,19 @@ class _ScanPageState extends ConsumerState<ScanPage> {
         );
       }
     } finally {
-      setState(() => _isScanning = false);
+      if (mounted) setState(() => _isScanning = false);
     }
+  }
+
+  void _connectTo(String ip, {int port = 22}) {
+    Navigator.push(context,
+      MaterialPageRoute(builder: (_) => ChatPage(
+        host: null,
+        directConnectInfo: DirectConnectInfo(
+          ip: ip, port: port, username: 'root', password: '',
+        ),
+      )),
+    );
   }
 
   @override
@@ -63,12 +100,33 @@ class _ScanPageState extends ConsumerState<ScanPage> {
             color: theme.colorScheme.surfaceContainerHighest,
             child: Column(
               children: [
-                Icon(Icons.wifi_find, size: 40,
-                    color: theme.colorScheme.primary),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        decoration: const InputDecoration(
+                          labelText: '子网',
+                          prefixIcon: Icon(Icons.network_check),
+                          isDense: true,
+                          contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        ),
+                        controller: TextEditingController(text: _subnet),
+                        onChanged: (v) => _subnet = v.trim(),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    FilledButton(
+                      onPressed: _isScanning ? null : _startScan,
+                      child: Text(_isScanning ? '扫描中...' : '扫描'),
+                    ),
+                  ],
+                ),
                 const SizedBox(height: 8),
                 Text(
-                  _isScanning ? '正在扫描 192.168.1.0/24...' : '发现 ${_results.length} 台主机',
-                  style: theme.textTheme.titleMedium,
+                  _isScanning
+                      ? '正在扫描 $_subnet.0/24...'
+                      : '发现 ${_results.length} 台主机 (端口 22)',
+                  style: theme.textTheme.bodySmall,
                 ),
                 if (_isScanning)
                   Padding(
@@ -84,7 +142,7 @@ class _ScanPageState extends ConsumerState<ScanPage> {
             child: _results.isEmpty
                 ? Center(
                     child: Text(
-                      _isScanning ? '扫描中...' : '点击右上角刷新开始扫描',
+                      _isScanning ? '扫描中，请稍候...' : '点击 "扫描" 按钮开始',
                       style: theme.textTheme.bodyLarge?.copyWith(color: Colors.grey),
                     ),
                   )
@@ -101,16 +159,13 @@ class _ScanPageState extends ConsumerState<ScanPage> {
                             child: Icon(Icons.dns,
                                 color: theme.colorScheme.primary),
                           ),
-                          title: Text(result.ip),
+                          title: Text('${result.ip}:${result.port}'),
                           subtitle: Text(
                             'SSH: ${result.sshBanner ?? "未知"}'
                             '\n响应: ${result.responseTimeMs}ms',
                           ),
                           trailing: FilledButton.tonal(
-                            onPressed: () {
-                              // Navigate to chat with this host
-                              Navigator.pop(context, result.ip);
-                            },
+                            onPressed: () => _connectTo(result.ip, port: result.port),
                             child: const Text('连接'),
                           ),
                         ),

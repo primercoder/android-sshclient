@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:ssh_client/providers/providers.dart';
 import 'package:ssh_client/data/models/host.dart';
+import 'package:ssh_client/data/models/direct_connect_info.dart';
 import 'package:ssh_client/ui/pages/scan_page.dart';
 import 'package:ssh_client/ui/pages/chat_page.dart';
 import 'package:ssh_client/ui/pages/host_detail_page.dart';
@@ -37,14 +38,12 @@ class _HomePageState extends ConsumerState<HomePage> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('SSH Client'),
-        centerTitle: true,
-        elevation: 0,
         actions: [
           IconButton(
             icon: const Icon(Icons.history),
             onPressed: () => Navigator.push(context,
-                MaterialPageRoute(builder: (_) => const HistoryPage())),
-            tooltip: '历史会话',
+                MaterialPageRoute(builder: (_) => const HistoryPage())).then((_) => _loadHosts()),
+            tooltip: '历史记录',
           ),
           IconButton(
             icon: const Icon(Icons.settings),
@@ -62,7 +61,7 @@ class _HomePageState extends ConsumerState<HomePage> {
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Icon(Icons.dns_outlined, size: 80,
-                        color: theme.colorScheme.primary.withOpacity(0.3)),
+                        color: theme.colorScheme.primary.withValues(alpha: 0.3)),
                     const SizedBox(height: 16),
                     Text('还没有保存的主机',
                         style: theme.textTheme.titleMedium
@@ -74,46 +73,54 @@ class _HomePageState extends ConsumerState<HomePage> {
                     const SizedBox(height: 24),
                     FilledButton.icon(
                       onPressed: () => Navigator.push(context,
-                          MaterialPageRoute(builder: (_) => const ScanPage())),
+                          MaterialPageRoute(builder: (_) => const ScanPage())).then((_) => _loadHosts()),
                       icon: const Icon(Icons.wifi_find),
                       label: const Text('扫描局域网'),
                     ),
                   ],
                 ),
               )
-            : ListView.builder(
-                padding: const EdgeInsets.all(12),
-                itemCount: _hosts.length,
-                itemBuilder: (context, index) => _HostCard(
-                  host: _hosts[index],
-                  onTap: () => Navigator.push(context,
-                      MaterialPageRoute(builder: (_) => ChatPage(host: _hosts[index]))),
-                  onLongPress: () => Navigator.push(context,
-                      MaterialPageRoute(builder: (_) => HostDetailPage(host: _hosts[index]))),
-                ),
+            : Column(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                    child: SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: () => Navigator.push(context,
+                            MaterialPageRoute(builder: (_) => const ScanPage())).then((_) => _loadHosts()),
+                        icon: const Icon(Icons.wifi_find),
+                        label: const Text('扫描局域网'),
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    child: ListView.builder(
+                      padding: const EdgeInsets.all(12),
+                      itemCount: _hosts.length,
+                      itemBuilder: (context, index) => _HostCard(
+                        host: _hosts[index],
+                        onTap: () => Navigator.push(context,
+                            MaterialPageRoute(builder: (_) => ChatPage(host: _hosts[index]))),
+                        onLongPress: () => Navigator.push(context,
+                            MaterialPageRoute(builder: (_) => HostDetailPage(host: _hosts[index]))),
+                      ),
+                    ),
+                  ),
+                ],
               ),
       ),
-      floatingActionButton: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-            FloatingActionButton.small(
-            heroTag: 'scan',
-            onPressed: () => Navigator.push(context,
-                MaterialPageRoute(builder: (_) => const ScanPage())),
-            child: const Icon(Icons.wifi_find),
-          ),
-          const SizedBox(height: 8),
-          FloatingActionButton(
-            heroTag: 'add',
-            onPressed: () => _showAddHostDialog(context),
-            child: const Icon(Icons.add),
-          ),
-        ],
+      floatingActionButton: FloatingActionButton(
+        heroTag: 'add',
+        onPressed: () => _showConnectDialog(context),
+        backgroundColor: theme.colorScheme.primary,
+        foregroundColor: theme.colorScheme.onPrimary,
+        child: const Icon(Icons.add),
       ),
     );
   }
 
-  void _showAddHostDialog(BuildContext context) {
+  void _showConnectDialog(BuildContext context) {
     final ipCtrl = TextEditingController();
     final portCtrl = TextEditingController(text: '22');
     final userCtrl = TextEditingController(text: 'root');
@@ -122,7 +129,7 @@ class _HomePageState extends ConsumerState<HomePage> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('添加主机'),
+        title: const Text('连接主机'),
         content: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -167,7 +174,21 @@ class _HomePageState extends ConsumerState<HomePage> {
           TextButton(onPressed: () => Navigator.pop(ctx),
               child: const Text('取消')),
           FilledButton(onPressed: () {
+            final ip = ipCtrl.text.trim();
+            final port = int.tryParse(portCtrl.text.trim()) ?? 22;
+            final user = userCtrl.text.trim();
+            final pass = passCtrl.text;
+
+            if (ip.isEmpty || user.isEmpty) return;
+
             Navigator.pop(ctx);
+            Navigator.push(context,
+                MaterialPageRoute(builder: (_) => ChatPage(
+                  host: null,
+                  directConnectInfo: DirectConnectInfo(
+                    ip: ip, port: port, username: user, password: pass,
+                  ),
+                )));
           }, child: const Text('连接')),
         ],
       ),
@@ -208,15 +229,12 @@ class _HostCard extends StatelessWidget {
         trailing: Container(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
           decoration: BoxDecoration(
-            color: Colors.green.withOpacity(0.1),
+            color: Colors.green.withValues(alpha: 0.1),
             borderRadius: BorderRadius.circular(12),
           ),
           child: Text(
             '${host.connectionCount} 次',
-            style: TextStyle(
-              fontSize: 12,
-              color: Colors.green[700],
-            ),
+            style: TextStyle(fontSize: 12, color: Colors.green[700]),
           ),
         ),
         onTap: onTap,

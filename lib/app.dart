@@ -9,14 +9,14 @@ class App extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final themeType = ref.watch(themeProvider);
+    final isDark = ref.watch(isDarkModeProvider);
 
     return MaterialApp(
       title: 'SSH Client',
       debugShowCheckedModeBanner: false,
-      theme: themeType.lightTheme,
-      darkTheme: themeType.darkTheme,
-      themeMode: ThemeMode.system,
+      theme: AppTheme.light,
+      darkTheme: AppTheme.dark,
+      themeMode: isDark ? ThemeMode.dark : ThemeMode.light,
       home: const HomePage(),
     );
   }
