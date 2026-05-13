@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:ssh_client/data/models/session.dart';
 import 'package:ssh_client/data/models/host.dart';
 import 'package:ssh_client/data/models/chat_message.dart';
 import 'package:ssh_client/providers/providers.dart';
@@ -13,7 +12,7 @@ class HistoryPage extends ConsumerStatefulWidget {
 }
 
 class _HistoryPageState extends ConsumerState<HistoryPage> {
-  List<_HostWithSessions> _hosts = [];
+  List<_HostWithMessages> _hosts = [];
 
   @override
   void initState() {
@@ -24,27 +23,31 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
   Future<void> _load() async {
     final sessDao = await ref.read(sessionDaoProvider.future);
     final hostDao = await ref.read(hostDaoProvider.future);
+    final msgDao = await ref.read(messageDaoProvider.future);
 
     final allSessions = sessDao.getAllSessions();
     final hostMap = <String, Host>{};
     for (final s in allSessions) {
-      final h = hostDao.getHostById(s.hostId);
-      if (h != null) hostMap[s.hostId] = h;
+      hostMap.putIfAbsent(s.hostId, () => hostDao.getHostById(s.hostId) ?? Host(
+        hostId: s.hostId, currentIp: s.hostId, hostKeyFingerprint: s.hostId,
+        firstSeenAt: s.startTime, lastSeenAt: s.startTime,
+      ));
     }
 
-    final grouped = <String, List<Session>>{};
-    for (final s in allSessions) {
-      grouped.putIfAbsent(s.hostId, () => []).add(s);
+    final result = <_HostWithMessages>[];
+    for (final entry in hostMap.entries) {
+      final msgs = <ChatMessage>[];
+      for (final s in allSessions.where((s) => s.hostId == entry.key)) {
+        msgs.addAll(msgDao.getMessagesBySession(s.sessionId));
+      }
+      msgs.sort((a, b) => a.timestamp.compareTo(b.timestamp));
+      if (msgs.isNotEmpty) {
+        result.add(_HostWithMessages(host: entry.value, messages: msgs));
+      }
     }
+    result.sort((a, b) => b.messages.last.timestamp.compareTo(a.messages.last.timestamp));
 
-    setState(() {
-      _hosts = grouped.entries.map((e) => _HostWithSessions(
-        host: hostMap[e.key],
-        hostId: e.key,
-        sessions: e.value,
-      )).toList()
-        ..sort((a, b) => b.sessions.first.startTime.compareTo(a.sessions.first.startTime));
-    });
+    if (mounted) setState(() => _hosts = result);
   }
 
   @override
@@ -62,8 +65,7 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
                       color: theme.colorScheme.primary.withValues(alpha: 0.3)),
                   const SizedBox(height: 16),
                   Text('暂无历史记录',
-                      style: theme.textTheme.titleMedium
-                          ?.copyWith(color: Colors.grey)),
+                      style: theme.textTheme.titleMedium?.copyWith(color: Colors.grey)),
                 ],
               ),
             )
@@ -72,30 +74,25 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
               itemCount: _hosts.length,
               itemBuilder: (context, index) {
                 final item = _hosts[index];
-                final lastSession = item.sessions.first;
-                final totalCmds = item.sessions.fold<int>(0, (s, e) => s + e.commandCount);
-
                 return Card(
                   margin: const EdgeInsets.only(bottom: 8),
                   child: ListTile(
                     leading: CircleAvatar(
                       backgroundColor: theme.colorScheme.primaryContainer,
-                      child: Icon(Icons.dns,
-                          color: theme.colorScheme.primary),
+                      child: Icon(Icons.dns, color: theme.colorScheme.primary),
                     ),
                     title: Text(
-                      item.host?.displayName.isNotEmpty == true
-                          ? item.host!.displayName
-                          : item.hostId.substring(0, 16),
+                      item.host.displayName.isNotEmpty
+                          ? item.host.displayName
+                          : item.host.currentIp,
                     ),
                     subtitle: Text(
-                      '${item.sessions.length} 次连接 | $totalCmds 条命令'
-                      '\n${_formatDate(lastSession.startTime)}',
+                      '${item.messages.length} 条消息 | ${_formatDate(item.messages.last.timestamp)}',
                     ),
                     trailing: const Icon(Icons.chevron_right),
                     onTap: () => Navigator.push(context,
                         MaterialPageRoute(builder: (_) =>
-                            _SessionReplayPage(hostId: item.hostId, sessions: item.sessions))),
+                            _HistoryReplayPage(host: item.host, messages: item.messages))),
                   ),
                 );
               },
@@ -104,51 +101,20 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
   }
 
   String _formatDate(DateTime dt) {
-    return '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')} '
-        '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+    return '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}';
   }
 }
 
-class _HostWithSessions {
-  final Host? host;
-  final String hostId;
-  final List<Session> sessions;
-  const _HostWithSessions({
-    required this.host, required this.hostId, required this.sessions,
-  });
+class _HostWithMessages {
+  final Host host;
+  final List<ChatMessage> messages;
+  const _HostWithMessages({required this.host, required this.messages});
 }
 
-class _SessionReplayPage extends ConsumerStatefulWidget {
-  final String hostId;
-  final List<Session> sessions;
-  const _SessionReplayPage({required this.hostId, required this.sessions});
-
-  @override
-  ConsumerState<_SessionReplayPage> createState() => _SessionReplayPageState();
-}
-
-class _SessionReplayPageState extends ConsumerState<_SessionReplayPage> {
-  List<ChatMessage> _messages = [];
-  Session? _selectedSession;
-
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (widget.sessions.isNotEmpty) {
-        _selectSession(widget.sessions.first);
-      }
-    });
-  }
-
-  Future<void> _selectSession(Session session) async {
-    final msgDao = await ref.read(messageDaoProvider.future);
-    final msgs = msgDao.getMessagesBySession(session.sessionId);
-    setState(() {
-      _selectedSession = session;
-      _messages = msgs;
-    });
-  }
+class _HistoryReplayPage extends StatelessWidget {
+  final Host host;
+  final List<ChatMessage> messages;
+  const _HistoryReplayPage({required this.host, required this.messages});
 
   @override
   Widget build(BuildContext context) {
@@ -156,39 +122,20 @@ class _SessionReplayPageState extends ConsumerState<_SessionReplayPage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(_selectedSession != null
-            ? '会话 ${_formatDate(_selectedSession!.startTime)}'
-            : '历史会话'),
-        actions: [
-          PopupMenuButton<Session>(
-            icon: const Icon(Icons.date_range),
-            tooltip: '切换会话',
-            onSelected: _selectSession,
-            itemBuilder: (_) => widget.sessions.map((s) =>
-              PopupMenuItem(value: s, child: Text(
-                '${_formatDate(s.startTime)} (${s.commandCount} 条)',
-              )),
-            ).toList(),
-          ),
-        ],
+        title: Text(host.displayName.isNotEmpty ? host.displayName : host.currentIp),
       ),
-      body: _messages.isEmpty
-          ? Center(
-              child: Text('该会话无消息记录',
-                  style: theme.textTheme.bodyLarge?.copyWith(color: Colors.grey)),
-            )
-          : ListView.builder(
-              padding: const EdgeInsets.all(12),
-              itemCount: _messages.length,
-              itemBuilder: (context, index) {
-                final msg = _messages[index];
-                return _buildReadonlyBubble(msg, theme);
-              },
-            ),
+      body: ListView.builder(
+        padding: const EdgeInsets.all(12),
+        itemCount: messages.length,
+        itemBuilder: (context, index) {
+          final msg = messages[index];
+          return _buildBubble(msg, theme);
+        },
+      ),
     );
   }
 
-  Widget _buildReadonlyBubble(ChatMessage msg, ThemeData theme) {
+  Widget _buildBubble(ChatMessage msg, ThemeData theme) {
     switch (msg.type) {
       case MessageType.command:
         return Padding(
@@ -201,27 +148,18 @@ class _SessionReplayPageState extends ConsumerState<_SessionReplayPage> {
                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                   decoration: BoxDecoration(
                     color: theme.colorScheme.primaryContainer,
-                    borderRadius: BorderRadius.circular(16).copyWith(
-                      bottomRight: Radius.zero,
-                    ),
+                    borderRadius: BorderRadius.circular(16).copyWith(bottomRight: Radius.zero),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
-                      Text(
-                        msg.content,
-                        style: TextStyle(
-                          fontFamily: 'monospace', fontSize: 14,
-                          color: theme.colorScheme.onPrimaryContainer,
-                        ),
-                      ),
+                      Text(msg.content,
+                          style: TextStyle(fontFamily: 'monospace', fontSize: 14,
+                              color: theme.colorScheme.onPrimaryContainer)),
                       const SizedBox(height: 2),
-                      Text(
-                        _formatTime(msg.timestamp),
-                        style: TextStyle(
-                          fontSize: 10, color: theme.colorScheme.onPrimaryContainer.withValues(alpha: 0.6),
-                        ),
-                      ),
+                      Text(_formatTime(msg.timestamp),
+                          style: TextStyle(fontSize: 10,
+                              color: theme.colorScheme.onPrimaryContainer.withValues(alpha: 0.6))),
                     ],
                   ),
                 ),
@@ -240,17 +178,11 @@ class _SessionReplayPageState extends ConsumerState<_SessionReplayPage> {
                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                   decoration: BoxDecoration(
                     color: theme.colorScheme.surfaceContainerHighest,
-                    borderRadius: BorderRadius.circular(16).copyWith(
-                      bottomLeft: Radius.zero,
-                    ),
+                    borderRadius: BorderRadius.circular(16).copyWith(bottomLeft: Radius.zero),
                   ),
-                  child: SelectableText(
-                    msg.content,
-                    style: TextStyle(
-                      fontFamily: 'monospace', fontSize: 13,
-                      color: theme.colorScheme.onSurface,
-                    ),
-                  ),
+                  child: SelectableText(msg.content,
+                      style: TextStyle(fontFamily: 'monospace', fontSize: 13,
+                          color: theme.colorScheme.onSurface)),
                 ),
               ),
             ],
@@ -274,10 +206,6 @@ class _SessionReplayPageState extends ConsumerState<_SessionReplayPage> {
       case MessageType.fileTransfer:
         return const SizedBox.shrink();
     }
-  }
-
-  String _formatDate(DateTime dt) {
-    return '${dt.month}/${dt.day} ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
   }
 
   String _formatTime(DateTime dt) {

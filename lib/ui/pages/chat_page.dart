@@ -119,17 +119,20 @@ class _ChatPageState extends ConsumerState<ChatPage> {
 
     await chat.addCommand(command);
 
-    if (command.startsWith('cd ')) {
-      final dir = command.substring(3).trim();
-      chat.setDirectory(dir.isEmpty ? '/' : dir);
-      return; // cd is local-only, no SSH exec needed
-    }
-
     try {
       final output = await sshService.execute(command);
       if (output.isNotEmpty) {
         await chat.addOutput(output);
       }
+
+      // Always query actual pwd after every command to track real path
+      try {
+        final pwd = await sshService.execute('pwd');
+        final dir = pwd.trim();
+        if (dir.isNotEmpty) {
+          chat.setDirectory(dir);
+        }
+      } catch (_) {}
     } catch (e) {
       await chat.addSystemMessage('命令执行错误: $e');
     }
@@ -220,12 +223,6 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                     Text('在线', style: TextStyle(fontSize: 12, color: Colors.green[700])),
                   ],
                 ),
-              ),
-            if (!widget.readOnly && _connected)
-              IconButton(
-                icon: const Icon(Icons.file_download),
-                onPressed: () => setState(() => _showFilePanel = !_showFilePanel),
-                tooltip: '文件传输',
               ),
           ],
         ),

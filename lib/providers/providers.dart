@@ -48,3 +48,5 @@ final lanScannerProvider = Provider<LanScanner>((ref) {
 });
 
 final isDarkModeProvider = StateProvider<bool>((ref) => false);
+
+final downloadDirProvider = StateProvider<String>((ref) => '/storage/emulated/0/Download');

@@ -29,7 +29,7 @@ class ChatFilePanel extends ConsumerWidget {
       decoration: BoxDecoration(
         color: theme.colorScheme.surfaceContainerHighest,
         border: Border(
-          top: BorderSide(color: theme.dividerColor.withOpacity(0.3)),
+          top: BorderSide(color: theme.dividerColor.withValues(alpha: 0.3)),
         ),
       ),
       child: Column(
@@ -37,6 +37,8 @@ class ChatFilePanel extends ConsumerWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text('文件传输', style: theme.textTheme.labelLarge),
+          Text('上传到: $currentDirectory',
+              style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey[600])),
           const SizedBox(height: 8),
           Row(
             children: [
@@ -50,12 +52,6 @@ class ChatFilePanel extends ConsumerWidget {
                 icon: Icons.download,
                 label: '下载文件',
                 onTap: () => _showDownloadDialog(context, ref),
-              ),
-              const SizedBox(width: 12),
-              _FileActionButton(
-                icon: Icons.folder_open,
-                label: '浏览远程',
-                onTap: () => _browseRemote(context, ref),
               ),
             ],
           ),
@@ -81,134 +77,129 @@ class ChatFilePanel extends ConsumerWidget {
       return;
     }
 
+    final remotePath = '$currentDirectory/${file.name}';
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('上传确认'),
+        content: Text('上传 ${file.name} (${_formatBytes(file.size)})\n到: $remotePath'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('上传')),
+        ],
+      ),
+    );
+    if (confirm != true || !context.mounted) return;
+
     final transferService = ScpTransferService(sshService.client!);
     final transferNotifier = ref.read(transferProvider.notifier);
 
-    final task = await transferService.uploadFile(
-      localPath: file.path!,
-      remotePath: currentDirectory,
-      sessionId: sessionId,
-      transferId: const Uuid().v4(),
-    );
-
-    await transferNotifier.addTransfer(task);
-
-    final chat = ref.read(chatProvider.notifier);
-    await chat.addSystemMessage(
-      '📄 文件上传完成: ${file.name} (${task.formattedSize})',
-    );
-
-    if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('上传完成: ${file.name}')),
+    try {
+      final task = await transferService.uploadFile(
+        localPath: file.path!,
+        remotePath: currentDirectory,
+        sessionId: sessionId,
+        transferId: const Uuid().v4(),
       );
+      await transferNotifier.addTransfer(task);
+      final chat = ref.read(chatProvider.notifier);
+      await chat.addSystemMessage('📄 上传完成: ${file.name} 到 $remotePath');
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('上传失败: $e')),
+        );
+      }
     }
   }
 
   void _showDownloadDialog(BuildContext context, WidgetRef ref) {
-    final remoteCtrl = TextEditingController(
-      text: '$currentDirectory/',
-    );
+    final remoteCtrl = TextEditingController(text: '$currentDirectory/');
+    final downloadDir = ref.read(downloadDirProvider);
 
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('下载文件'),
-        content: TextField(
-          controller: remoteCtrl,
-          decoration: const InputDecoration(
-            labelText: '远程文件路径',
-            hintText: '/home/user/file.txt',
-            prefixIcon: Icon(Icons.terminal),
-          ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: remoteCtrl,
+              decoration: const InputDecoration(
+                labelText: '远程路径',
+                hintText: '/home/user/file.txt',
+                prefixIcon: Icon(Icons.terminal),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text('下载到: $downloadDir', style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+          ],
         ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () async {
-              Navigator.pop(ctx);
-              await _downloadFile(remoteCtrl.text, context, ref);
-            },
-            child: const Text('下载'),
-          ),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+          FilledButton(onPressed: () async {
+            final remotePath = remoteCtrl.text.trim();
+            if (remotePath.isEmpty) return;
+            Navigator.pop(ctx);
+            await _downloadFile(remotePath, downloadDir, context, ref);
+          }, child: const Text('下载')),
         ],
       ),
     );
   }
 
   Future<void> _downloadFile(
-      String remotePath, BuildContext context, WidgetRef ref) async {
-    if (remotePath.isEmpty) return;
+      String remotePath, String localDir, BuildContext context, WidgetRef ref) async {
+    final filename = remotePath.split('/').last;
+    final localPath = '$localDir/$filename';
 
-    final savePath = await FilePicker.platform.saveFile(
-      dialogTitle: '保存文件',
-      fileName: remotePath.split('/').last,
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('下载确认'),
+        content: Text('下载 $remotePath\n到: $localPath'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('下载')),
+        ],
+      ),
     );
-    if (savePath == null) return;
+    if (confirm != true || !context.mounted) return;
 
     final sshService = ref.read(sshClientServiceProvider);
     if (sshService.client == null) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('SSH 未连接')),
-        );
-      }
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('SSH 未连接')));
       return;
     }
 
     final transferService = ScpTransferService(sshService.client!);
     final transferNotifier = ref.read(transferProvider.notifier);
 
-    final task = await transferService.downloadFile(
-      remotePath: remotePath,
-      localPath: savePath,
-      sessionId: sessionId,
-      transferId: const Uuid().v4(),
-    );
-
-    await transferNotifier.addTransfer(task);
-
-    final chat = ref.read(chatProvider.notifier);
-    await chat.addSystemMessage(
-      '📥 文件下载完成: ${remotePath.split('/').last}',
-    );
-
-    if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('下载完成: ${remotePath.split('/').last}')),
+    try {
+      final task = await transferService.downloadFile(
+        remotePath: remotePath,
+        localPath: localPath,
+        sessionId: sessionId,
+        transferId: const Uuid().v4(),
       );
+      await transferNotifier.addTransfer(task);
+      final chat = ref.read(chatProvider.notifier);
+      await chat.addSystemMessage('📥 下载完成: $filename 到 $localPath');
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('下载失败: $e')),
+        );
+      }
     }
   }
 
-  void _browseRemote(BuildContext context, WidgetRef ref) {
-    final dirCtrl = TextEditingController(text: currentDirectory);
-
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('远程目录'),
-        content: TextField(
-          controller: dirCtrl,
-          decoration: const InputDecoration(
-            labelText: '远程路径',
-            prefixIcon: Icon(Icons.folder),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('关闭'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('浏览'),
-          ),
-        ],
-      ),
-    );
+  String _formatBytes(int bytes) {
+    if (bytes < 1024) return '$bytes B';
+    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
+    return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
   }
 }
 
@@ -217,11 +208,7 @@ class _FileActionButton extends StatelessWidget {
   final String label;
   final VoidCallback onTap;
 
-  const _FileActionButton({
-    required this.icon,
-    required this.label,
-    required this.onTap,
-  });
+  const _FileActionButton({required this.icon, required this.label, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
