@@ -21,12 +21,8 @@ class ScpProgress {
 
 class ScpTransferService {
   final SSHClient _client;
-  final StreamController<ScpProgress> _progressController =
-      StreamController<ScpProgress>.broadcast();
 
   ScpTransferService(this._client);
-
-  Stream<ScpProgress> get progressStream => _progressController.stream;
 
   Future<TransferTask> uploadFile({
     required String localPath,
@@ -52,36 +48,33 @@ class ScpTransferService {
 
     final scpSession = await _client.execute('scp -t "$remotePath/"');
 
-    scpSession.stdin.add(Uint8List.fromList(utf8.encode('C0644 $fileSize $filename\n')));
-    await scpSession.stdout.first;
+    try {
+      scpSession.stdin.add(Uint8List.fromList(utf8.encode('C0644 $fileSize $filename\n')));
+      await utf8.decodeStream(scpSession.stdout).timeout(const Duration(seconds: 5));
 
-    final stream = file.openRead();
-    int bytesSent = 0;
-    final stopwatch = Stopwatch()..start();
+      final stream = file.openRead();
+      int bytesSent = 0;
 
-    await for (final chunk in stream) {
-      scpSession.stdin.add(Uint8List.fromList(chunk));
-      bytesSent += chunk.length;
-
-      final elapsed = stopwatch.elapsedMilliseconds / 1000;
-      final speed = elapsed > 0 ? bytesSent / elapsed : 0.0;
-
-      _progressController.add(ScpProgress(
-        bytesTransferred: bytesSent,
-        totalBytes: fileSize,
-        speedBytesPerSec: speed,
-      ));
-    }
+      await for (final chunk in stream) {
+        scpSession.stdin.add(Uint8List.fromList(chunk));
+        bytesSent += chunk.length;
+      }
 
       scpSession.stdin.add(Uint8List.fromList([0]));
-    await scpSession.done;
-    stopwatch.stop();
+      await scpSession.done;
 
-    return task.copyWith(
-      status: TransferStatus.completed,
-      bytesTransferred: fileSize,
-      completedAt: DateTime.now(),
-    );
+      return task.copyWith(
+        status: TransferStatus.completed,
+        bytesTransferred: bytesSent,
+        completedAt: DateTime.now(),
+      );
+    } catch (e) {
+      scpSession.close();
+      return task.copyWith(
+        status: TransferStatus.failed,
+        errorMessage: e.toString(),
+      );
+    }
   }
 
   Future<TransferTask> downloadFile({
@@ -106,55 +99,42 @@ class ScpTransferService {
 
     final scpSession = await _client.execute('scp -f "$remotePath"');
 
-    scpSession.stdin.add(Uint8List.fromList([0]));
+    try {
+      scpSession.stdin.add(Uint8List.fromList([0]));
 
-    final header = await scpSession.stdout.transform(
-      utf8.decoder as StreamTransformer<Uint8List, String>,
-    ).first;
-    final parts = header.split(' ');
-    if (parts.length >= 3) {
-      final fileSize = int.tryParse(parts[1]) ?? 0;
+      final header = await utf8.decodeStream(scpSession.stdout).timeout(const Duration(seconds: 5));
+      final parts = header.split(' ');
+      if (parts.length < 3) {
+        throw Exception('Unexpected SCP response: $header');
+      }
 
-    scpSession.stdin.add(Uint8List.fromList([0]));
+      final _ = int.tryParse(parts[1]) ?? 0;
+
+      scpSession.stdin.add(Uint8List.fromList([0]));
 
       final sink = localFile.openWrite();
       int bytesReceived = 0;
-      final stopwatch = Stopwatch()..start();
 
       await for (final chunk in scpSession.stdout) {
         sink.add(chunk);
         bytesReceived += chunk.length;
-
-        final elapsed = stopwatch.elapsedMilliseconds / 1000;
-        final speed = elapsed > 0 ? bytesReceived / elapsed : 0.0;
-
-        if (fileSize > 0) {
-          _progressController.add(ScpProgress(
-            bytesTransferred: bytesReceived,
-            totalBytes: fileSize,
-            speedBytesPerSec: speed,
-          ));
-        }
       }
 
       await sink.flush();
       await sink.close();
-      stopwatch.stop();
+      await scpSession.done;
+
+      return task.copyWith(
+        status: TransferStatus.completed,
+        bytesTransferred: bytesReceived,
+        completedAt: DateTime.now(),
+      );
+    } catch (e) {
+      scpSession.close();
+      return task.copyWith(
+        status: TransferStatus.failed,
+        errorMessage: e.toString(),
+      );
     }
-
-    await scpSession.done;
-
-    final completedFile = File(localPath);
-    final actualSize = await completedFile.length();
-
-    return task.copyWith(
-      status: TransferStatus.completed,
-      bytesTransferred: actualSize,
-      completedAt: DateTime.now(),
-    );
-  }
-
-  void dispose() {
-    _progressController.close();
   }
 }

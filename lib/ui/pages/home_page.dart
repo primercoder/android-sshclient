@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:uuid/uuid.dart';
 import 'package:ssh_client/providers/providers.dart';
 import 'package:ssh_client/providers/ssh_connection_provider.dart';
 import 'package:ssh_client/data/models/host.dart';
@@ -36,8 +37,7 @@ class _HomePageState extends ConsumerState<HomePage> {
 
   Future<void> _loadHosts() async {
     final dao = await ref.read(hostDaoProvider.future);
-    final hosts = dao.getAllHosts();
-    setState(() => _hosts = hosts);
+    setState(() => _hosts = dao.getAllHosts());
   }
 
   void _detectNetwork() async {
@@ -57,7 +57,7 @@ class _HomePageState extends ConsumerState<HomePage> {
     setState(() { _scanError = null; _isScanning = true; _scanResults = []; });
 
     try {
-      final results = await scanner.scan(cidr: cidr);
+      final results = await scanner.scan(cidr: cidr, timeoutMs: 1000);
       if (mounted) setState(() => _scanResults = results);
     } catch (e) {
       if (mounted) setState(() => _scanError = '扫描出错: $e');
@@ -69,11 +69,6 @@ class _HomePageState extends ConsumerState<HomePage> {
   bool _isHostConnected(Host host) {
     final conn = ref.read(sshConnectionProvider.notifier).activeConnection;
     return conn != null && conn.host == host.currentIp && conn.port == host.port;
-  }
-
-  bool _isIpConnected(String ip, int port) {
-    final conn = ref.read(sshConnectionProvider.notifier).activeConnection;
-    return conn != null && conn.host == ip && conn.port == port;
   }
 
   Future<void> _connectToHost({Host? host, String? ip, int port = 22, String? username, String? password}) async {
@@ -129,6 +124,7 @@ class _HomePageState extends ConsumerState<HomePage> {
           FilledButton(onPressed: () {
             ref.read(sshConnectionProvider.notifier).disconnect();
             Navigator.pop(ctx);
+            setState(() {});
           }, child: const Text('断开')),
         ],
       ),
@@ -151,11 +147,11 @@ class _HomePageState extends ConsumerState<HomePage> {
           child: Form(
             key: formKey,
             child: Column(mainAxisSize: MainAxisSize.min, children: [
-              TextFormField(controller: nameCtrl, decoration: const InputDecoration(labelText: '标记名', prefixIcon: Icon(Icons.label))),
+              TextFormField(controller: nameCtrl, decoration: const InputDecoration(labelText: '标记名', prefixIcon: Icon(Icons.label), isDense: true)),
               const SizedBox(height: 8),
               TextFormField(
                 controller: ipCtrl,
-                decoration: const InputDecoration(labelText: 'IP 地址', prefixIcon: Icon(Icons.computer)),
+                decoration: const InputDecoration(labelText: 'IP 地址', prefixIcon: Icon(Icons.computer), isDense: true),
                 validator: (v) {
                   if (v == null || v.isEmpty) return '请输入 IP';
                   final parts = v.trim().split('.');
@@ -165,11 +161,11 @@ class _HomePageState extends ConsumerState<HomePage> {
                 },
               ),
               const SizedBox(height: 8),
-              TextFormField(controller: portCtrl, decoration: const InputDecoration(labelText: '端口', prefixIcon: Icon(Icons.numbers)), keyboardType: TextInputType.number),
+              TextFormField(controller: portCtrl, decoration: const InputDecoration(labelText: '端口', prefixIcon: Icon(Icons.numbers), isDense: true), keyboardType: TextInputType.number),
               const SizedBox(height: 8),
-              TextFormField(controller: userCtrl, decoration: const InputDecoration(labelText: '用户名', prefixIcon: Icon(Icons.person))),
+              TextFormField(controller: userCtrl, decoration: const InputDecoration(labelText: '用户名', prefixIcon: Icon(Icons.person), isDense: true)),
               const SizedBox(height: 8),
-              TextFormField(controller: passCtrl, decoration: const InputDecoration(labelText: '密码', prefixIcon: Icon(Icons.lock)), obscureText: true),
+              TextFormField(controller: passCtrl, decoration: const InputDecoration(labelText: '密码', prefixIcon: Icon(Icons.lock), isDense: true), obscureText: true),
             ]),
           ),
         ),
@@ -183,11 +179,9 @@ class _HomePageState extends ConsumerState<HomePage> {
               displayName: nameCtrl.text.trim(),
               currentIp: ipCtrl.text.trim(),
               port: int.tryParse(portCtrl.text.trim()) ?? 22,
-              username: userCtrl.text.trim(),
-              password: passCtrl.text,
+              username: userCtrl.text.trim(), password: passCtrl.text,
               hostKeyFingerprint: host.hostKeyFingerprint,
-              firstSeenAt: host.firstSeenAt,
-              lastSeenAt: DateTime.now(),
+              firstSeenAt: host.firstSeenAt, lastSeenAt: DateTime.now(),
               connectionCount: host.connectionCount,
             ));
             Navigator.pop(ctx);
@@ -217,37 +211,45 @@ class _HomePageState extends ConsumerState<HomePage> {
     );
   }
 
-  void _showScanCredentialDialog(ScanResult scanResult) {
+  void _showScanAddDialog(ScanResult scanResult) {
+    final nameCtrl = TextEditingController(text: scanResult.ip);
     final userCtrl = TextEditingController(text: 'root');
     final passCtrl = TextEditingController();
-    final nameCtrl = TextEditingController(text: scanResult.ip);
     final formKey = GlobalKey<FormState>();
 
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('连接 ${scanResult.ip}:${scanResult.port}'),
+        title: Text('添加 ${scanResult.ip}:${scanResult.port}'),
         content: SingleChildScrollView(
           child: Form(
             key: formKey,
             child: Column(mainAxisSize: MainAxisSize.min, children: [
-              TextFormField(controller: nameCtrl, decoration: const InputDecoration(labelText: '标记名', prefixIcon: Icon(Icons.label))),
+              TextFormField(controller: nameCtrl, decoration: const InputDecoration(labelText: '标记名', prefixIcon: Icon(Icons.label), isDense: true)),
               const SizedBox(height: 8),
-              TextFormField(controller: userCtrl, decoration: const InputDecoration(labelText: '用户名', prefixIcon: Icon(Icons.person))),
+              TextFormField(controller: userCtrl, decoration: const InputDecoration(labelText: '用户名', prefixIcon: Icon(Icons.person), isDense: true)),
               const SizedBox(height: 8),
-              TextFormField(controller: passCtrl, decoration: const InputDecoration(labelText: '密码', prefixIcon: Icon(Icons.lock)), obscureText: true),
+              TextFormField(controller: passCtrl, decoration: const InputDecoration(labelText: '密码', prefixIcon: Icon(Icons.lock), isDense: true), obscureText: true),
             ]),
           ),
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
-          FilledButton(onPressed: () {
-            Navigator.pop(ctx);
-            _connectToHost(
-              ip: scanResult.ip, port: scanResult.port,
+          FilledButton(onPressed: () async {
+            final dao = await ref.read(hostDaoProvider.future);
+            final now = DateTime.now();
+            dao.insertHost(Host(
+              hostId: const Uuid().v4(),
+              displayName: nameCtrl.text.trim(),
+              currentIp: scanResult.ip,
+              port: scanResult.port,
               username: userCtrl.text.trim(), password: passCtrl.text,
-            );
-          }, child: const Text('连接')),
+              hostKeyFingerprint: scanResult.ip,
+              firstSeenAt: now, lastSeenAt: now,
+            ));
+            Navigator.pop(ctx);
+            _loadHosts();
+          }, child: const Text('添加')),
         ],
       ),
     );
@@ -304,25 +306,67 @@ class _HomePageState extends ConsumerState<HomePage> {
       body: RefreshIndicator(
         onRefresh: _loadHosts,
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(12, 8, 12, 80),
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 100),
           children: [
-            // --- Action buttons ---
-            Row(children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: () => Navigator.push(context,
-                      MaterialPageRoute(builder: (_) => const HistoryPage())),
-                  icon: const Icon(Icons.history), label: const Text('历史'),
-                ),
+            // --- Scan section ---
+            Card(
+              margin: EdgeInsets.zero,
+              child: ExpansionTile(
+                title: const Text('局域网扫描'),
+                leading: const Icon(Icons.wifi_find),
+                initiallyExpanded: _hosts.isEmpty,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                    child: Column(children: [
+                      Row(children: [
+                        Expanded(
+                          flex: 3,
+                          child: TextField(
+                            controller: _cidrCtrl,
+                            decoration: InputDecoration(
+                              label: const Text('CIDR 子网'),
+                              hintText: '192.168.1.1/24',
+                              isDense: true,
+                              errorText: _scanError,
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                            ),
+                            onChanged: (_) { if (_scanError != null) setState(() => _scanError = null); },
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        FilledButton(
+                          onPressed: _isScanning ? null : _startScan,
+                          style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10)),
+                          child: Text(_isScanning ? '扫描中' : '扫描'),
+                        ),
+                      ]),
+                      const SizedBox(height: 8),
+                      if (_isScanning)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 4),
+                          child: Column(children: [
+                            const LinearProgressIndicator(),
+                            const SizedBox(height: 4),
+                            Text('端口 22 扫描中 (最长 30 秒)...',
+                                style: TextStyle(fontSize: 11, color: Colors.grey[500])),
+                          ]),
+                        ),
+                      if (_scanResults.isEmpty && !_isScanning)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: Text('输入 CIDR 点击扫描', style: TextStyle(fontSize: 12, color: Colors.grey[500])),
+                        )
+                      else
+                        ..._scanResults.map((r) => _ScanResultCard(
+                          result: r,
+                          onAdd: () => _showScanAddDialog(r),
+                        )),
+                    ]),
+                  ),
+                ],
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: FilledButton.icon(
-                  onPressed: () => _showDirectConnectDialog(),
-                  icon: const Icon(Icons.flash_on), label: const Text('直连'),
-                ),
-              ),
-            ]),
+            ),
             const SizedBox(height: 12),
 
             // --- Saved hosts section ---
@@ -337,65 +381,28 @@ class _HomePageState extends ConsumerState<HomePage> {
                 onDelete: () => _confirmDelete(host),
                 onDisconnect: _isHostConnected(host) ? _disconnectHost : null,
               )),
-              const SizedBox(height: 12),
             ],
-
-            // --- Scan section ---
-            Card(
-              margin: EdgeInsets.zero,
-              child: ExpansionTile(
-                title: const Text('局域网扫描'),
-                leading: const Icon(Icons.wifi_find),
-                initiallyExpanded: _hosts.isEmpty,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                    child: Column(children: [
-                      Row(children: [
-                        Expanded(
-                          child: TextField(
-                            controller: _cidrCtrl,
-                            decoration: InputDecoration(
-                              labelText: 'CIDR',
-                              hintText: '192.168.1.1/24',
-                              isDense: true,
-                              errorText: _scanError,
-                              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                            ),
-                            onChanged: (_) { if (_scanError != null) setState(() => _scanError = null); },
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        FilledButton(
-                          onPressed: _isScanning ? null : _startScan,
-                          child: Text(_isScanning ? '...' : '扫描'),
-                        ),
-                      ]),
-                      const SizedBox(height: 8),
-                      if (_isScanning) const LinearProgressIndicator(),
-                      if (_scanResults.isEmpty && !_isScanning)
-                        Text('输入 CIDR 点击扫描', style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey))
-                      else
-                        ..._scanResults.map((r) => _ScanResultCard(
-                          result: r,
-                          connected: _isIpConnected(r.ip, r.port),
-                          onConnect: () => _showScanCredentialDialog(r),
-                          onDisconnect: _isIpConnected(r.ip, r.port) ? _disconnectHost : null,
-                        )),
-                    ]),
-                  ),
-                ],
-              ),
-            ),
           ],
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        heroTag: 'add',
-        onPressed: _showAddFavoriteDialog,
-        backgroundColor: theme.colorScheme.primary,
-        foregroundColor: theme.colorScheme.onPrimary,
-        child: const Icon(Icons.add),
+      floatingActionButton: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          FloatingActionButton.small(
+            heroTag: 'direct',
+            onPressed: () => _showDirectConnectDialog(),
+            backgroundColor: theme.colorScheme.secondaryContainer,
+            child: const Icon(Icons.flash_on, size: 20),
+          ),
+          const SizedBox(height: 8),
+          FloatingActionButton(
+            heroTag: 'add',
+            onPressed: _showAddFavoriteDialog,
+            backgroundColor: theme.colorScheme.primary,
+            foregroundColor: theme.colorScheme.onPrimary,
+            child: const Icon(Icons.add),
+          ),
+        ],
       ),
     );
   }
@@ -416,10 +423,10 @@ class _HomePageState extends ConsumerState<HomePage> {
           child: Form(
             key: formKey,
             child: Column(mainAxisSize: MainAxisSize.min, children: [
-              TextFormField(controller: nameCtrl, decoration: const InputDecoration(labelText: '标记名', prefixIcon: Icon(Icons.label))),
+              TextFormField(controller: nameCtrl, decoration: const InputDecoration(labelText: '标记名', prefixIcon: Icon(Icons.label), isDense: true)),
               const SizedBox(height: 8),
               TextFormField(
-                controller: ipCtrl, decoration: const InputDecoration(labelText: 'IP 地址', prefixIcon: Icon(Icons.computer)),
+                controller: ipCtrl, decoration: const InputDecoration(labelText: 'IP 地址', prefixIcon: Icon(Icons.computer), isDense: true),
                 validator: (v) {
                   if (v == null || v.isEmpty) return '请输入 IP';
                   final parts = v.trim().split('.');
@@ -429,11 +436,11 @@ class _HomePageState extends ConsumerState<HomePage> {
                 },
               ),
               const SizedBox(height: 8),
-              TextFormField(controller: portCtrl, decoration: const InputDecoration(labelText: '端口', prefixIcon: Icon(Icons.numbers)), keyboardType: TextInputType.number),
+              TextFormField(controller: portCtrl, decoration: const InputDecoration(labelText: '端口', prefixIcon: Icon(Icons.numbers), isDense: true), keyboardType: TextInputType.number),
               const SizedBox(height: 8),
-              TextFormField(controller: userCtrl, decoration: const InputDecoration(labelText: '用户名', prefixIcon: Icon(Icons.person))),
+              TextFormField(controller: userCtrl, decoration: const InputDecoration(labelText: '用户名', prefixIcon: Icon(Icons.person), isDense: true)),
               const SizedBox(height: 8),
-              TextFormField(controller: passCtrl, decoration: const InputDecoration(labelText: '密码', prefixIcon: Icon(Icons.lock)), obscureText: true),
+              TextFormField(controller: passCtrl, decoration: const InputDecoration(labelText: '密码', prefixIcon: Icon(Icons.lock), isDense: true), obscureText: true),
             ]),
           ),
         ),
@@ -444,7 +451,7 @@ class _HomePageState extends ConsumerState<HomePage> {
             final dao = await ref.read(hostDaoProvider.future);
             final now = DateTime.now();
             dao.insertHost(Host(
-              hostId: ipCtrl.text.trim(),
+              hostId: const Uuid().v4(),
               displayName: nameCtrl.text.trim().isNotEmpty ? nameCtrl.text.trim() : ipCtrl.text.trim(),
               currentIp: ipCtrl.text.trim(),
               port: int.tryParse(portCtrl.text.trim()) ?? 22,
@@ -465,6 +472,7 @@ class _HomePageState extends ConsumerState<HomePage> {
     final portCtrl = TextEditingController(text: '22');
     final userCtrl = TextEditingController(text: 'root');
     final passCtrl = TextEditingController();
+    final nameCtrl = TextEditingController();
     final formKey = GlobalKey<FormState>();
 
     showDialog(
@@ -476,8 +484,10 @@ class _HomePageState extends ConsumerState<HomePage> {
           child: Form(
             key: formKey,
             child: Column(mainAxisSize: MainAxisSize.min, children: [
+              TextFormField(controller: nameCtrl, decoration: const InputDecoration(labelText: '标记名', prefixIcon: Icon(Icons.label), isDense: true)),
+              const SizedBox(height: 8),
               TextFormField(
-                controller: ipCtrl, decoration: const InputDecoration(labelText: 'IP 地址', prefixIcon: Icon(Icons.computer)),
+                controller: ipCtrl, decoration: const InputDecoration(labelText: 'IP 地址', prefixIcon: Icon(Icons.computer), isDense: true),
                 validator: (v) {
                   if (v == null || v.isEmpty) return '请输入 IP';
                   final parts = v.trim().split('.');
@@ -487,11 +497,11 @@ class _HomePageState extends ConsumerState<HomePage> {
                 },
               ),
               const SizedBox(height: 8),
-              TextFormField(controller: portCtrl, decoration: const InputDecoration(labelText: '端口', prefixIcon: Icon(Icons.numbers)), keyboardType: TextInputType.number),
+              TextFormField(controller: portCtrl, decoration: const InputDecoration(labelText: '端口', prefixIcon: Icon(Icons.numbers), isDense: true), keyboardType: TextInputType.number),
               const SizedBox(height: 8),
-              TextFormField(controller: userCtrl, decoration: const InputDecoration(labelText: '用户名', prefixIcon: Icon(Icons.person)), validator: (v) => (v == null || v.isEmpty) ? '请输入用户名' : null),
+              TextFormField(controller: userCtrl, decoration: const InputDecoration(labelText: '用户名', prefixIcon: Icon(Icons.person), isDense: true), validator: (v) => (v == null || v.isEmpty) ? '请输入用户名' : null),
               const SizedBox(height: 8),
-              TextFormField(controller: passCtrl, decoration: const InputDecoration(labelText: '密码', prefixIcon: Icon(Icons.lock)), obscureText: true),
+              TextFormField(controller: passCtrl, decoration: const InputDecoration(labelText: '密码', prefixIcon: Icon(Icons.lock), isDense: true), obscureText: true),
             ]),
           ),
         ),
@@ -504,12 +514,11 @@ class _HomePageState extends ConsumerState<HomePage> {
             final user = userCtrl.text.trim();
             final pass = passCtrl.text;
 
-            // Add to favorites automatically
             final dao = await ref.read(hostDaoProvider.future);
             final now = DateTime.now();
             dao.insertHost(Host(
-              hostId: ip,
-              displayName: ip,
+              hostId: const Uuid().v4(),
+              displayName: nameCtrl.text.trim().isNotEmpty ? nameCtrl.text.trim() : ip,
               currentIp: ip, port: port,
               username: user, password: pass,
               hostKeyFingerprint: ip,
@@ -525,6 +534,8 @@ class _HomePageState extends ConsumerState<HomePage> {
     );
   }
 }
+
+// --- Widgets ---
 
 class _HostCard extends StatelessWidget {
   final Host host;
@@ -552,10 +563,8 @@ class _HostCard extends StatelessWidget {
           backgroundColor: connected ? Colors.green.withValues(alpha: 0.2) : theme.colorScheme.surfaceContainerHighest,
           child: Icon(Icons.dns, size: 18, color: connected ? Colors.green : Colors.grey),
         ),
-        title: Text(host.displayName.isNotEmpty ? host.displayName : host.currentIp,
-            style: const TextStyle(fontSize: 14)),
-        subtitle: Text('${host.username}@${host.currentIp}:${host.port}',
-            style: theme.textTheme.bodySmall),
+        title: Text(host.displayName.isNotEmpty ? host.displayName : host.currentIp, style: const TextStyle(fontSize: 14)),
+        subtitle: Text('${host.username}@${host.currentIp}:${host.port}', style: theme.textTheme.bodySmall),
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -567,19 +576,14 @@ class _HostCard extends StatelessWidget {
                   color: connected ? Colors.green.withValues(alpha: 0.15) : Colors.grey.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: Text(
-                  connected ? '已连接' : '未连接',
-                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500,
-                      color: connected ? Colors.green[700] : Colors.grey[600]),
-                ),
+                child: Text(connected ? '已连接' : '未连接',
+                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500,
+                        color: connected ? Colors.green[700] : Colors.grey[600])),
               ),
             ),
             PopupMenuButton<String>(
               icon: const Icon(Icons.more_vert, size: 18),
-              onSelected: (v) {
-                if (v == 'edit') onEdit();
-                if (v == 'delete') onDelete();
-              },
+              onSelected: (v) { if (v == 'edit') onEdit(); if (v == 'delete') onDelete(); },
               itemBuilder: (_) => [
                 const PopupMenuItem(value: 'edit', child: ListTile(leading: Icon(Icons.edit, size: 18), title: Text('编辑'), dense: true)),
                 const PopupMenuItem(value: 'delete', child: ListTile(leading: Icon(Icons.delete, size: 18, color: Colors.red), title: Text('删除', style: TextStyle(color: Colors.red)), dense: true)),
@@ -595,14 +599,9 @@ class _HostCard extends StatelessWidget {
 
 class _ScanResultCard extends StatelessWidget {
   final ScanResult result;
-  final bool connected;
-  final VoidCallback onConnect;
-  final VoidCallback? onDisconnect;
+  final VoidCallback onAdd;
 
-  const _ScanResultCard({
-    required this.result, required this.connected,
-    required this.onConnect, this.onDisconnect,
-  });
+  const _ScanResultCard({required this.result, required this.onAdd});
 
   @override
   Widget build(BuildContext context) {
@@ -615,27 +614,18 @@ class _ScanResultCard extends StatelessWidget {
         dense: true,
         leading: CircleAvatar(
           radius: 14,
-          backgroundColor: connected ? Colors.green.withValues(alpha: 0.2) : Colors.grey.withValues(alpha: 0.15),
-          child: Icon(Icons.wifi_find, size: 16, color: connected ? Colors.green : Colors.grey[600]),
+          backgroundColor: Colors.grey.withValues(alpha: 0.15),
+          child: Icon(Icons.wifi_find, size: 16, color: Colors.grey[600]),
         ),
         title: Text('${result.ip}:${result.port}', style: const TextStyle(fontSize: 13, fontFamily: 'monospace')),
         subtitle: result.sshBanner != null
             ? Text(result.sshBanner!, style: TextStyle(fontSize: 10, color: Colors.grey[500]))
             : Text('${result.responseTimeMs}ms', style: TextStyle(fontSize: 10, color: Colors.grey[500])),
-        trailing: connected
-            ? GestureDetector(
-                onTap: onDisconnect,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-                  decoration: BoxDecoration(color: Colors.green.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(10)),
-                  child: Text('已连接', style: TextStyle(fontSize: 10, color: Colors.green[700])),
-                ),
-              )
-            : FilledButton.tonal(
-                onPressed: onConnect,
-                style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4)),
-                child: const Text('连接', style: TextStyle(fontSize: 11)),
-              ),
+        trailing: FilledButton.tonal(
+          onPressed: onAdd,
+          style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4)),
+          child: const Text('添加', style: TextStyle(fontSize: 11)),
+        ),
       ),
     );
   }
