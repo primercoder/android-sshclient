@@ -1,10 +1,10 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:ssh_client/data/models/chat_message.dart';
 import 'package:ssh_client/data/models/host.dart';
 import 'package:ssh_client/data/models/direct_connect_info.dart';
 import 'package:ssh_client/providers/chat_provider.dart';
+import 'package:ssh_client/providers/ssh_connection_provider.dart';
 import 'package:ssh_client/providers/providers.dart';
 import 'package:ssh_client/ui/widgets/chat/chat_bubble.dart';
 import 'package:ssh_client/ui/widgets/chat/chat_input_bar.dart';
@@ -34,7 +34,6 @@ class _ChatPageState extends ConsumerState<ChatPage> {
   final TextEditingController _inputController = TextEditingController();
   final FocusNode _inputFocus = FocusNode();
   bool _showFilePanel = false;
-  StreamSubscription<String>? _outputSubscription;
   bool _connected = false;
   bool _error = false;
   String _errorMsg = '';
@@ -69,7 +68,13 @@ class _ChatPageState extends ConsumerState<ChatPage> {
 
   Future<void> _initSession() async {
     final sshService = ref.read(sshClientServiceProvider);
+    final sshConn = ref.read(sshConnectionProvider.notifier);
     final chat = ref.read(chatProvider.notifier);
+
+    if (!sshConn.isConnected || sshService.client == null) {
+      setState(() { _error = true; _errorMsg = 'SSH 未连接，请返回重试'; });
+      return;
+    }
 
     String hostId;
     if (widget.host != null) {
@@ -80,32 +85,10 @@ class _ChatPageState extends ConsumerState<ChatPage> {
       return;
     }
 
-    await chat.startNewSession(hostId);
-
-    // Check if SSH client is already connected
-    if (sshService.client == null || sshService.shellSession == null) {
-      setState(() {
-        _error = true;
-        _errorMsg = 'SSH 未连接，请返回重试';
-      });
-      await chat.addSystemMessage('错误: SSH 未连接，请返回主页重新连接');
-      return;
-    }
-
     setState(() => _connected = true);
+    await chat.startNewSession(hostId);
     await chat.addSystemMessage('连接已建立 | $_subtitle');
-
-    // Subscribe to output stream (non-broadcast, buffers until now)
-    final outputStream = sshService.subscribeOutput();
-    _outputSubscription = outputStream.listen((data) {
-      chat.addOutput(data);
-      _scrollToBottom();
-    });
-
     await chat.addSystemMessage('提示: 在下方输入命令，按回车发送');
-
-    // Try to get initial shell prompt
-    sshService.sendShellCommand('');
   }
 
   void _scrollToBottom() {
@@ -120,7 +103,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     });
   }
 
-  void _sendCommand(String command) async {
+  Future<void> _sendCommand(String command) async {
     if (command.trim().isEmpty || !_connected) return;
 
     final chat = ref.read(chatProvider.notifier);
@@ -131,13 +114,18 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     if (command.startsWith('cd ')) {
       final dir = command.substring(3).trim();
       chat.setDirectory(dir.isEmpty ? '/' : dir);
+      return; // cd is local-only, no SSH exec needed
     }
 
     try {
-      sshService.sendShellCommand(command);
+      final output = await sshService.execute(command);
+      if (output.isNotEmpty) {
+        await chat.addOutput(output);
+      }
     } catch (e) {
       await chat.addSystemMessage('命令执行错误: $e');
     }
+    _scrollToBottom();
   }
 
   void _sendMessage() {
@@ -146,13 +134,30 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     _sendCommand(text);
   }
 
-  void _retry() {
-    Navigator.pop(context);
+  Future<bool> _onWillPop() async {
+    if (_connected && !widget.readOnly) {
+      final result = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('断开 SSH 连接？'),
+          content: const Text('退出会话将关闭 SSH 连接。'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('留在会话')),
+            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('断开')),
+          ],
+        ),
+      );
+      if (result == true) {
+        ref.read(sshConnectionProvider.notifier).disconnect();
+        return true;
+      }
+      return false;
+    }
+    return true;
   }
 
   @override
   void dispose() {
-    _outputSubscription?.cancel();
     _scrollController.dispose();
     _inputController.dispose();
     _inputFocus.dispose();
@@ -164,128 +169,122 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     final theme = Theme.of(context);
     final chatState = ref.watch(chatProvider);
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(_title),
-            if (_subtitle.isNotEmpty)
-              Text(_subtitle, style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              )),
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) async {
+        if (didPop) return;
+        final shouldPop = await _onWillPop();
+        if (shouldPop && context.mounted) {
+          Navigator.pop(context);
+        }
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          title: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(_title),
+              if (_subtitle.isNotEmpty)
+                Text(_subtitle, style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                )),
+            ],
+          ),
+          actions: [
+            if (_connected)
+              Container(
+                margin: const EdgeInsets.only(right: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.green.withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(width: 8, height: 8, decoration: const BoxDecoration(color: Colors.green, shape: BoxShape.circle)),
+                    const SizedBox(width: 4),
+                    Text('在线', style: TextStyle(fontSize: 12, color: Colors.green[700])),
+                  ],
+                ),
+              ),
+            if (!widget.readOnly && _connected)
+              IconButton(
+                icon: const Icon(Icons.file_download),
+                onPressed: () => setState(() => _showFilePanel = !_showFilePanel),
+                tooltip: '文件传输',
+              ),
           ],
         ),
-        actions: [
-          if (_connected)
-            Container(
-              margin: const EdgeInsets.only(right: 8),
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: Colors.green.withValues(alpha: 0.2),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    width: 8, height: 8,
-                    decoration: const BoxDecoration(
-                      color: Colors.green, shape: BoxShape.circle,
-                    ),
-                  ),
-                  const SizedBox(width: 4),
-                  Text('在线', style: TextStyle(fontSize: 12, color: Colors.green[700])),
-                ],
-              ),
-            ),
-          if (!widget.readOnly && _connected)
-            IconButton(
-              icon: const Icon(Icons.file_download),
-              onPressed: () => setState(() => _showFilePanel = !_showFilePanel),
-              tooltip: '文件传输',
-            ),
-        ],
-      ),
-      body: Column(
-        children: [
-          if (!widget.readOnly && _connected) const ChatPathIndicator(),
+        body: Column(
+          children: [
+            if (!widget.readOnly && _connected) const ChatPathIndicator(),
 
-          Expanded(
-            child: chatState.messages.isEmpty && !_error
-                ? Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const CircularProgressIndicator(),
-                        const SizedBox(height: 16),
-                        Text('连接中...', style: theme.textTheme.bodyLarge?.copyWith(color: Colors.grey)),
-                      ],
+            Expanded(
+              child: chatState.messages.isEmpty && !_error
+                  ? Center(
+                      child: Text(_connected ? '等待输入命令...' : '连接中...',
+                          style: theme.textTheme.bodyLarge?.copyWith(color: Colors.grey)),
+                    )
+                  : ListView.builder(
+                      controller: _scrollController,
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      itemCount: chatState.messages.length,
+                      itemBuilder: (context, index) {
+                        final msg = chatState.messages[index];
+                        if (msg.type == MessageType.fileTransfer) {
+                          return TransferBubble(message: msg);
+                        }
+                        return ChatBubble(message: msg);
+                      },
                     ),
-                  )
-                : ListView.builder(
-                    controller: _scrollController,
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    itemCount: chatState.messages.length,
-                    itemBuilder: (context, index) {
-                      final msg = chatState.messages[index];
-                      if (msg.type == MessageType.fileTransfer) {
-                        return TransferBubble(message: msg);
-                      }
-                      return ChatBubble(message: msg);
-                    },
-                  ),
-          ),
+            ),
 
-          if (_error)
-            Container(
-              padding: const EdgeInsets.all(16),
-              color: theme.colorScheme.errorContainer,
-              child: Column(
-                children: [
-                  Text(_errorMsg,
-                      style: TextStyle(color: theme.colorScheme.onErrorContainer)),
+            if (_error)
+              Container(
+                padding: const EdgeInsets.all(16),
+                color: theme.colorScheme.errorContainer,
+                child: Column(children: [
+                  Text(_errorMsg, style: TextStyle(color: theme.colorScheme.onErrorContainer)),
                   const SizedBox(height: 8),
-                  FilledButton.tonal(
-                    onPressed: _retry,
-                    child: const Text('返回重试'),
-                  ),
-                ],
+                  FilledButton.tonal(onPressed: () => Navigator.pop(context), child: const Text('返回重试')),
+                ]),
               ),
+
+            if (!widget.readOnly && _connected) ChatSuggestionChips(
+              onTap: _sendCommand,
             ),
 
-          if (!widget.readOnly && _connected)
-            ChatSuggestionChips(onTap: _sendCommand),
-
-          if (!widget.readOnly && _connected && _showFilePanel && widget.host != null)
-            ChatFilePanel(
-              host: widget.host!,
-              sessionId: chatState.currentSession?.sessionId ?? '',
-              currentDirectory: chatState.currentDirectory,
-            ),
-
-          if (widget.readOnly)
-            Container(
-              padding: const EdgeInsets.all(12),
-              color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.lock, size: 16, color: Colors.grey),
-                  const SizedBox(width: 6),
-                  Text('只读模式 — 历史会话回放',
-                      style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey)),
-                ],
+            if (!widget.readOnly && _connected && _showFilePanel && widget.host != null)
+              ChatFilePanel(
+                host: widget.host!,
+                sessionId: chatState.currentSession?.sessionId ?? '',
+                currentDirectory: chatState.currentDirectory,
               ),
-            )
-          else if (!_error)
-            ChatInputBar(
-              controller: _inputController,
-              focusNode: _inputFocus,
-              onSend: _connected ? _sendMessage : null,
-              onFileTap: () => setState(() => _showFilePanel = !_showFilePanel),
-            ),
-        ],
+
+            if (widget.readOnly)
+              Container(
+                padding: const EdgeInsets.all(12),
+                color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.lock, size: 16, color: Colors.grey),
+                    const SizedBox(width: 6),
+                    Text('只读模式 — 历史会话回放',
+                        style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey)),
+                  ],
+                ),
+              )
+            else if (!_error)
+              ChatInputBar(
+                controller: _inputController,
+                focusNode: _inputFocus,
+                onSend: _connected ? _sendMessage : null,
+                onFileTap: () => setState(() => _showFilePanel = !_showFilePanel),
+              ),
+          ],
+        ),
       ),
     );
   }

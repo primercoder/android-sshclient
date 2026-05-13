@@ -33,54 +33,67 @@ class _HomePageState extends ConsumerState<HomePage> {
     setState(() => _hosts = hosts);
   }
 
+  bool _isHostConnected(Host host) {
+    final conn = ref.read(sshConnectionProvider.notifier).activeConnection;
+    return conn != null && conn.host == host.currentIp && conn.port == host.port;
+  }
+
   Future<void> _connectAndNavigate(Host host) async {
+    final notifier = ref.read(sshConnectionProvider.notifier);
+
+    if (_isHostConnected(host)) {
+      Navigator.push(context,
+        MaterialPageRoute(builder: (_) => ChatPage(host: host)));
+      return;
+    }
+
     final connInfo = SshConnectionInfo(
-      host: host.currentIp,
-      port: host.port,
-      username: host.username,
-      password: host.password,
+      host: host.currentIp, port: host.port,
+      username: host.username, password: host.password,
     );
 
     if (!mounted) return;
     showDialog(
-      context: context,
-      barrierDismissible: false,
+      context: context, barrierDismissible: false,
       builder: (ctx) => const Center(child: CircularProgressIndicator()),
     );
 
-    try {
-      final connection = ref.read(sshConnectionProvider.notifier);
-      await connection.connect(connInfo);
+    final ok = await notifier.connect(connInfo);
 
-      if (!mounted) return;
-      Navigator.pop(context); // close loading
+    if (!mounted) return;
+    Navigator.pop(context);
 
+    if (ok) {
       Navigator.push(context,
-        MaterialPageRoute(builder: (_) => ChatPage(
-          host: host,
-          directConnectInfo: DirectConnectInfo(
-            ip: host.currentIp,
-            port: host.port,
-            username: host.username,
-            password: host.password,
-          ),
-        )),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      Navigator.pop(context); // close loading
+        MaterialPageRoute(builder: (_) => ChatPage(host: host)));
+    } else {
       showDialog(
         context: context,
         builder: (ctx) => AlertDialog(
           title: const Text('连接失败'),
-          content: Text('$e'),
-          actions: [
-            FilledButton(onPressed: () => Navigator.pop(ctx),
-                child: const Text('确定')),
-          ],
+          content: Text(notifier.errorMessage ?? '未知错误'),
+          actions: [FilledButton(onPressed: () => Navigator.pop(ctx), child: const Text('确定'))],
         ),
       );
     }
+  }
+
+  void _disconnectHost(Host host) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('断开连接'),
+        content: Text('确定断开与 ${host.displayName} 的 SSH 连接？'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+          FilledButton(onPressed: () {
+            ref.read(sshConnectionProvider.notifier).disconnect();
+            Navigator.pop(ctx);
+            setState(() {});
+          }, child: const Text('断开')),
+        ],
+      ),
+    );
   }
 
   Future<void> _directConnect() async {
@@ -95,64 +108,48 @@ class _HomePageState extends ConsumerState<HomePage> {
       builder: (ctx) => AlertDialog(
         title: const Text('直连主机'),
         content: SingleChildScrollView(
-          padding: EdgeInsets.only(
-            bottom: MediaQuery.of(context).viewInsets.bottom,
-          ),
+          padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
           child: Form(
             key: formKey,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextFormField(
-                  controller: ipCtrl,
-                  decoration: const InputDecoration(
-                    labelText: 'IP 地址',
-                    prefixIcon: Icon(Icons.computer),
-                    hintText: '192.168.1.100',
-                  ),
-                  keyboardType: TextInputType.url,
-                  validator: (v) {
-                    if (v == null || v.isEmpty) return '请输入 IP';
-                    final parts = v.trim().split('.');
-                    if (parts.length != 4) return 'IP 格式错误';
-                    for (final p in parts) {
-                      final n = int.tryParse(p);
-                      if (n == null || n < 0 || n > 255) return 'IP 格式错误';
-                    }
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 8),
-                TextFormField(
-                  controller: portCtrl,
-                  decoration: const InputDecoration(
-                    labelText: '端口', prefixIcon: Icon(Icons.numbers),
-                  ),
-                  keyboardType: TextInputType.number,
-                ),
-                const SizedBox(height: 8),
-                TextFormField(
-                  controller: userCtrl,
-                  decoration: const InputDecoration(
-                    labelText: '用户名', prefixIcon: Icon(Icons.person),
-                  ),
-                  validator: (v) => (v == null || v.isEmpty) ? '请输入用户名' : null,
-                ),
-                const SizedBox(height: 8),
-                TextFormField(
-                  controller: passCtrl,
-                  decoration: const InputDecoration(
-                    labelText: '密码', prefixIcon: Icon(Icons.lock),
-                  ),
-                  obscureText: true,
-                ),
-              ],
-            ),
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              TextFormField(
+                controller: ipCtrl,
+                decoration: const InputDecoration(labelText: 'IP 地址', prefixIcon: Icon(Icons.computer), hintText: '192.168.1.100'),
+                keyboardType: TextInputType.url,
+                validator: (v) {
+                  if (v == null || v.isEmpty) return '请输入 IP';
+                  final parts = v.trim().split('.');
+                  if (parts.length != 4) return 'IP 格式错误';
+                  for (final p in parts) {
+                    final n = int.tryParse(p);
+                    if (n == null || n < 0 || n > 255) return 'IP 格式错误';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 8),
+              TextFormField(
+                controller: portCtrl,
+                decoration: const InputDecoration(labelText: '端口', prefixIcon: Icon(Icons.numbers)),
+                keyboardType: TextInputType.number,
+              ),
+              const SizedBox(height: 8),
+              TextFormField(
+                controller: userCtrl,
+                decoration: const InputDecoration(labelText: '用户名', prefixIcon: Icon(Icons.person)),
+                validator: (v) => (v == null || v.isEmpty) ? '请输入用户名' : null,
+              ),
+              const SizedBox(height: 8),
+              TextFormField(
+                controller: passCtrl,
+                decoration: const InputDecoration(labelText: '密码', prefixIcon: Icon(Icons.lock)),
+                obscureText: true,
+              ),
+            ]),
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx),
-              child: const Text('取消')),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
           FilledButton(onPressed: () {
             if (!(formKey.currentState?.validate() ?? false)) return;
             Navigator.pop(ctx, DirectConnectInfo(
@@ -166,45 +163,34 @@ class _HomePageState extends ConsumerState<HomePage> {
       ),
     );
 
-    if (result == null) return;
+    if (result == null || !mounted) return;
 
-    // Connect with verification
-    if (!mounted) return;
     showDialog(
-      context: context,
-      barrierDismissible: false,
+      context: context, barrierDismissible: false,
       builder: (ctx) => const Center(child: CircularProgressIndicator()),
     );
 
-    try {
-      final connInfo = SshConnectionInfo(
-        host: result.ip, port: result.port,
-        username: result.username, password: result.password,
-      );
-      final connection = ref.read(sshConnectionProvider.notifier);
-      await connection.connect(connInfo);
+    final connInfo = SshConnectionInfo(
+      host: result.ip, port: result.port,
+      username: result.username, password: result.password,
+    );
+    final ok = await ref.read(sshConnectionProvider.notifier).connect(connInfo);
 
+    if (!mounted) return;
+    Navigator.pop(context);
+
+    if (ok) {
       if (!mounted) return;
-      Navigator.pop(context);
-
       Navigator.push(context,
-        MaterialPageRoute(builder: (_) => ChatPage(
-          host: null,
-          directConnectInfo: result,
-        )),
-      );
-    } catch (e) {
+        MaterialPageRoute(builder: (_) => ChatPage(directConnectInfo: result)));
+    } else {
       if (!mounted) return;
-      Navigator.pop(context);
       showDialog(
         context: context,
         builder: (ctx) => AlertDialog(
           title: const Text('连接失败'),
-          content: Text('$e'),
-          actions: [
-            FilledButton(onPressed: () => Navigator.pop(ctx),
-                child: const Text('确定')),
-          ],
+          content: Text(ref.read(sshConnectionProvider.notifier).errorMessage ?? '未知错误'),
+          actions: [FilledButton(onPressed: () => Navigator.pop(ctx), child: const Text('确定'))],
         ),
       );
     }
@@ -225,84 +211,47 @@ class _HomePageState extends ConsumerState<HomePage> {
         content: SingleChildScrollView(
           child: Form(
             key: formKey,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextFormField(
-                  controller: nameCtrl,
-                  decoration: const InputDecoration(
-                    labelText: '备注名称',
-                    prefixIcon: Icon(Icons.label),
-                    hintText: '例如: 我的服务器',
-                  ),
-                ),
-                const SizedBox(height: 8),
-                TextFormField(
-                  controller: ipCtrl,
-                  decoration: const InputDecoration(
-                    labelText: 'IP 地址',
-                    prefixIcon: Icon(Icons.computer),
-                  ),
-                  validator: (v) {
-                    if (v == null || v.isEmpty) return '请输入 IP';
-                    final parts = v.trim().split('.');
-                    if (parts.length != 4) return 'IP 格式错误';
-                    for (final p in parts) {
-                      final n = int.tryParse(p);
-                      if (n == null || n < 0 || n > 255) return 'IP 格式错误';
-                    }
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 8),
-                TextFormField(
-                  controller: portCtrl,
-                  decoration: const InputDecoration(
-                    labelText: '端口',
-                    prefixIcon: Icon(Icons.numbers),
-                  ),
-                  keyboardType: TextInputType.number,
-                ),
-                const SizedBox(height: 8),
-                TextFormField(
-                  controller: userCtrl,
-                  decoration: const InputDecoration(
-                    labelText: '用户名',
-                    prefixIcon: Icon(Icons.person),
-                  ),
-                  validator: (v) => (v == null || v.isEmpty) ? '请输入用户名' : null,
-                ),
-                const SizedBox(height: 8),
-                TextFormField(
-                  controller: passCtrl,
-                  decoration: const InputDecoration(
-                    labelText: '密码',
-                    prefixIcon: Icon(Icons.lock),
-                  ),
-                  obscureText: true,
-                ),
-              ],
-            ),
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              TextFormField(controller: nameCtrl, decoration: const InputDecoration(labelText: '备注名称', prefixIcon: Icon(Icons.label))),
+              const SizedBox(height: 8),
+              TextFormField(
+                controller: ipCtrl,
+                decoration: const InputDecoration(labelText: 'IP 地址', prefixIcon: Icon(Icons.computer)),
+                validator: (v) {
+                  if (v == null || v.isEmpty) return '请输入 IP';
+                  final parts = v.trim().split('.');
+                  if (parts.length != 4) return 'IP 格式错误';
+                  for (final p in parts) {
+                    final n = int.tryParse(p);
+                    if (n == null || n < 0 || n > 255) return 'IP 格式错误';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 8),
+              TextFormField(controller: portCtrl, decoration: const InputDecoration(labelText: '端口', prefixIcon: Icon(Icons.numbers)), keyboardType: TextInputType.number),
+              const SizedBox(height: 8),
+              TextFormField(controller: userCtrl, decoration: const InputDecoration(labelText: '用户名', prefixIcon: Icon(Icons.person)), validator: (v) => (v == null || v.isEmpty) ? '请输入用户名' : null),
+              const SizedBox(height: 8),
+              TextFormField(controller: passCtrl, decoration: const InputDecoration(labelText: '密码', prefixIcon: Icon(Icons.lock)), obscureText: true),
+            ]),
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx),
-              child: const Text('取消')),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
           FilledButton(onPressed: () async {
             if (!(formKey.currentState?.validate() ?? false)) return;
             final hostDao = await ref.read(hostDaoProvider.future);
             final now = DateTime.now();
             hostDao.insertHost(Host(
               hostId: ipCtrl.text.trim(),
-              displayName: nameCtrl.text.trim().isNotEmpty
-                  ? nameCtrl.text.trim() : ipCtrl.text.trim(),
+              displayName: nameCtrl.text.trim().isNotEmpty ? nameCtrl.text.trim() : ipCtrl.text.trim(),
               currentIp: ipCtrl.text.trim(),
               port: int.tryParse(portCtrl.text.trim()) ?? 22,
               username: userCtrl.text.trim(),
               password: passCtrl.text,
               hostKeyFingerprint: ipCtrl.text.trim(),
-              firstSeenAt: now,
-              lastSeenAt: now,
+              firstSeenAt: now, lastSeenAt: now,
             ));
             Navigator.pop(ctx);
             _loadHosts();
@@ -334,7 +283,12 @@ class _HomePageState extends ConsumerState<HomePage> {
           ),
         ],
       ),
-      body: _buildBody(theme),
+      body: RefreshIndicator(
+        onRefresh: _loadHosts,
+        child: _hosts.isEmpty
+            ? _buildEmptyState(theme)
+            : _buildHostList(theme),
+      ),
       floatingActionButton: FloatingActionButton(
         heroTag: 'add',
         onPressed: _showAddFavoriteDialog,
@@ -345,81 +299,77 @@ class _HomePageState extends ConsumerState<HomePage> {
     );
   }
 
-  Widget _buildBody(ThemeData theme) {
-    return RefreshIndicator(
-      onRefresh: _loadHosts,
-      child: _hosts.isEmpty
-          ? ListView(
-              children: [
-                SizedBox(height: MediaQuery.of(context).size.height * 0.2),
-                Center(
-                  child: Column(
-                    children: [
-                      Icon(Icons.dns_outlined, size: 80,
-                          color: theme.colorScheme.primary.withValues(alpha: 0.3)),
-                      const SizedBox(height: 16),
-                      Text('还没有收藏的主机',
-                          style: theme.textTheme.titleMedium?.copyWith(color: Colors.grey)),
-                      const SizedBox(height: 24),
-                    ],
-                  ),
-                ),
-                _buildActionButtons(theme),
-              ],
-            )
-          : Column(
-              children: [
-                _buildActionButtons(theme),
-                Expanded(
-                  child: ListView.builder(
-                    padding: const EdgeInsets.fromLTRB(12, 0, 12, 80),
-                    itemCount: _hosts.length,
-                    itemBuilder: (context, index) => _HostCard(
-                      host: _hosts[index],
-                      onTap: () => _connectAndNavigate(_hosts[index]),
-                      onLongPress: () => Navigator.push(context,
-                          MaterialPageRoute(builder: (_) => HostDetailPage(host: _hosts[index]))),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-    );
+  Widget _buildEmptyState(ThemeData theme) {
+    return ListView(children: [
+      SizedBox(height: MediaQuery.of(context).size.height * 0.2),
+      Center(child: Column(children: [
+        Icon(Icons.dns_outlined, size: 80, color: theme.colorScheme.primary.withValues(alpha: 0.3)),
+        const SizedBox(height: 16),
+        Text('还没有收藏的主机', style: theme.textTheme.titleMedium?.copyWith(color: Colors.grey)),
+        const SizedBox(height: 24),
+      ])),
+      _buildActionButtons(theme),
+    ]);
+  }
+
+  Widget _buildHostList(ThemeData theme) {
+    return Column(children: [
+      _buildActionButtons(theme),
+      Expanded(
+        child: ListView.builder(
+          padding: const EdgeInsets.fromLTRB(12, 0, 12, 80),
+          itemCount: _hosts.length,
+          itemBuilder: (context, index) {
+            final host = _hosts[index];
+            final connected = _isHostConnected(host);
+            return _HostCard(
+              host: host,
+              connected: connected,
+              onTap: () => _connectAndNavigate(host),
+              onLongPress: () => Navigator.push(context,
+                  MaterialPageRoute(builder: (_) => HostDetailPage(host: host))),
+              onConnectToggle: connected ? () => _disconnectHost(host) : null,
+            );
+          },
+        ),
+      ),
+    ]);
   }
 
   Widget _buildActionButtons(ThemeData theme) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-      child: Row(
-        children: [
-          Expanded(
-            child: OutlinedButton.icon(
-              onPressed: () => Navigator.push(context,
-                  MaterialPageRoute(builder: (_) => const ScanPage())).then((_) => _loadHosts()),
-              icon: const Icon(Icons.wifi_find),
-              label: const Text('扫描'),
-            ),
+      child: Row(children: [
+        Expanded(
+          child: OutlinedButton.icon(
+            onPressed: () => Navigator.push(context,
+                MaterialPageRoute(builder: (_) => const ScanPage())).then((_) => _loadHosts()),
+            icon: const Icon(Icons.wifi_find), label: const Text('扫描'),
           ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: FilledButton.icon(
-              onPressed: _directConnect,
-              icon: const Icon(Icons.flash_on),
-              label: const Text('直连'),
-            ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: FilledButton.icon(
+            onPressed: _directConnect,
+            icon: const Icon(Icons.flash_on), label: const Text('直连'),
           ),
-        ],
-      ),
+        ),
+      ]),
     );
   }
 }
 
 class _HostCard extends StatelessWidget {
   final Host host;
+  final bool connected;
   final VoidCallback onTap;
   final VoidCallback onLongPress;
+  final VoidCallback? onConnectToggle;
 
-  const _HostCard({required this.host, required this.onTap, required this.onLongPress});
+  const _HostCard({
+    required this.host, required this.connected,
+    required this.onTap, required this.onLongPress, this.onConnectToggle,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -429,24 +379,49 @@ class _HostCard extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 8),
       child: ListTile(
         leading: CircleAvatar(
-          backgroundColor: theme.colorScheme.primaryContainer,
-          child: Icon(Icons.dns, color: theme.colorScheme.primary),
+          backgroundColor: connected
+              ? Colors.green.withValues(alpha: 0.2)
+              : theme.colorScheme.primaryContainer,
+          child: Icon(
+            connected ? Icons.check_circle : Icons.dns,
+            color: connected ? Colors.green : theme.colorScheme.primary,
+          ),
         ),
         title: Text(host.displayName.isNotEmpty ? host.displayName : host.currentIp),
-        subtitle: Text(
-          '${host.username}@${host.currentIp}:${host.port}',
-          style: theme.textTheme.bodySmall,
-        ),
-        trailing: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-          decoration: BoxDecoration(
-            color: Colors.green.withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Text(
-            '${host.connectionCount} 次',
-            style: TextStyle(fontSize: 12, color: Colors.green[700]),
-          ),
+        subtitle: Text('${host.username}@${host.currentIp}:${host.port}',
+            style: theme.textTheme.bodySmall),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (connected)
+              GestureDetector(
+                onTap: onConnectToggle,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.green.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(width: 6, height: 6, decoration: const BoxDecoration(color: Colors.green, shape: BoxShape.circle)),
+                      const SizedBox(width: 4),
+                      Text('已连接', style: TextStyle(fontSize: 11, color: Colors.green[700])),
+                    ],
+                  ),
+                ),
+              ),
+            const SizedBox(width: 4),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: Colors.green.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text('${host.connectionCount} 次', style: TextStyle(fontSize: 11, color: Colors.green[700])),
+            ),
+          ],
         ),
         onTap: onTap,
         onLongPress: onLongPress,
