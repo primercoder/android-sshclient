@@ -95,14 +95,12 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     setState(() => _connected = true);
     await chat.addSystemMessage('连接已建立 | $_subtitle');
 
-    // Subscribe to output stream
-    final outputStream = sshService.outputStream;
-    if (outputStream != null && _outputSubscription == null) {
-      _outputSubscription = outputStream.listen((data) {
-        chat.addOutput(data);
-        _scrollToBottom();
-      });
-    }
+    // Subscribe to output stream (non-broadcast, buffers until now)
+    final outputStream = sshService.subscribeOutput();
+    _outputSubscription = outputStream.listen((data) {
+      chat.addOutput(data);
+      _scrollToBottom();
+    });
 
     await chat.addSystemMessage('提示: 在下方输入命令，按回车发送');
 

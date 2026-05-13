@@ -14,8 +14,22 @@ class SshClientService {
 
   SSHClient? get client => _client;
   SSHSession? get shellSession => _shellSession;
-  Stream<String>? get outputStream => _outputController?.stream;
   SshConnectionInfo? get connectionInfo => _connectionInfo;
+
+  /// Subscribe to shell output. Must be called after connect().
+  Stream<String> subscribeOutput() {
+    if (_outputController == null) {
+      _outputController = StreamController<String>();
+      _outputSubscription = _shellSession!.stdout
+          .transform(utf8.decoder as StreamTransformer<Uint8List, String>)
+          .listen((data) {
+        _outputController?.add(data);
+      },
+      onError: (e) => _outputController?.addError(e),
+      onDone: () => _outputController?.close());
+    }
+    return _outputController!.stream;
+  }
 
   String _fingerprintToString(Uint8List bytes) {
     return bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join(':');
@@ -46,13 +60,6 @@ class SshClientService {
       _shellSession = await _client!.shell(
         pty: const SSHPtyConfig(),
       );
-
-      _outputController = StreamController<String>.broadcast();
-      _outputSubscription = _shellSession!.stdout
-          .transform(utf8.decoder as StreamTransformer<Uint8List, String>)
-          .listen((data) {
-        _outputController?.add(data);
-      });
 
       _startKeepalive();
     } catch (e) {
