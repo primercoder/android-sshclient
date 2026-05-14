@@ -175,16 +175,18 @@ class _HomePageState extends ConsumerState<HomePage> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('编辑主机'),
-        content: SingleChildScrollView(
-          child: Form(
-            key: formKey,
-            child: Column(mainAxisSize: MainAxisSize.min, children: [
-              TextFormField(controller: nameCtrl, decoration: const InputDecoration(labelText: '标记名', prefixIcon: Icon(Icons.label), isDense: false)),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: ipCtrl,
-                decoration: const InputDecoration(labelText: 'IP 地址', prefixIcon: Icon(Icons.computer), isDense: false),
-                validator: (v) {
+        content: GestureDetector(
+          onTap: () => FocusScope.of(ctx).unfocus(),
+          child: SingleChildScrollView(
+            child: Form(
+              key: formKey,
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                TextFormField(controller: nameCtrl, decoration: const InputDecoration(labelText: '标记名', prefixIcon: Icon(Icons.label), isDense: false)),
+                const SizedBox(height: 8),
+                TextFormField(
+                  controller: ipCtrl,
+                  decoration: const InputDecoration(labelText: 'IP 地址', prefixIcon: Icon(Icons.computer), isDense: false),
+                  validator: (v) {
                   if (v == null || v.isEmpty) return '请输入 IP';
                   final parts = v.trim().split('.');
                   if (parts.length != 4) return 'IP 格式错误';
@@ -200,6 +202,7 @@ class _HomePageState extends ConsumerState<HomePage> {
               TextFormField(controller: passCtrl, decoration: const InputDecoration(labelText: '密码', prefixIcon: Icon(Icons.lock), isDense: false), obscureText: true),
             ]),
           ),
+        ),
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
@@ -283,16 +286,19 @@ class _HomePageState extends ConsumerState<HomePage> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text('添加 ${scanResult.ip}:${scanResult.port}'),
-        content: SingleChildScrollView(
-          child: Form(
-            key: formKey,
-            child: Column(mainAxisSize: MainAxisSize.min, children: [
-              TextFormField(controller: nameCtrl, decoration: const InputDecoration(labelText: '标记名', prefixIcon: Icon(Icons.label), isDense: false)),
-              const SizedBox(height: 8),
-              TextFormField(controller: userCtrl, decoration: const InputDecoration(labelText: '用户名', prefixIcon: Icon(Icons.person), isDense: false)),
-              const SizedBox(height: 8),
-              TextFormField(controller: passCtrl, decoration: const InputDecoration(labelText: '密码', prefixIcon: Icon(Icons.lock), isDense: false), obscureText: true),
-            ]),
+        content: GestureDetector(
+          onTap: () => FocusScope.of(ctx).unfocus(),
+          child: SingleChildScrollView(
+            child: Form(
+              key: formKey,
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                TextFormField(controller: nameCtrl, decoration: const InputDecoration(labelText: '标记名', prefixIcon: Icon(Icons.label), isDense: false)),
+                const SizedBox(height: 8),
+                TextFormField(controller: userCtrl, decoration: const InputDecoration(labelText: '用户名', prefixIcon: Icon(Icons.person), isDense: false)),
+                const SizedBox(height: 8),
+                TextFormField(controller: passCtrl, decoration: const InputDecoration(labelText: '密码', prefixIcon: Icon(Icons.lock), isDense: false), obscureText: true),
+              ]),
+            ),
           ),
         ),
         actions: [
@@ -486,29 +492,32 @@ class _HomePageState extends ConsumerState<HomePage> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('添加收藏主机'),
-        content: SingleChildScrollView(
-          child: Form(
-            key: formKey,
-            child: Column(mainAxisSize: MainAxisSize.min, children: [
-              TextFormField(controller: nameCtrl, decoration: const InputDecoration(labelText: '标记名', prefixIcon: Icon(Icons.label), isDense: false)),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: ipCtrl, decoration: const InputDecoration(labelText: 'IP 地址', prefixIcon: Icon(Icons.computer), isDense: false),
-                validator: (v) {
-                  if (v == null || v.isEmpty) return '请输入 IP';
-                  final parts = v.trim().split('.');
-                  if (parts.length != 4) return 'IP 格式错误';
-                  for (final p in parts) { final n = int.tryParse(p); if (n == null || n < 0 || n > 255) return 'IP 格式错误'; }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 8),
-              TextFormField(controller: portCtrl, decoration: const InputDecoration(labelText: '端口', prefixIcon: Icon(Icons.numbers), isDense: false), keyboardType: TextInputType.number),
-              const SizedBox(height: 8),
-              TextFormField(controller: userCtrl, decoration: const InputDecoration(labelText: '用户名', prefixIcon: Icon(Icons.person), isDense: false)),
-              const SizedBox(height: 8),
-              TextFormField(controller: passCtrl, decoration: const InputDecoration(labelText: '密码', prefixIcon: Icon(Icons.lock), isDense: false), obscureText: true),
-            ]),
+        content: GestureDetector(
+          onTap: () => FocusScope.of(ctx).unfocus(),
+          child: SingleChildScrollView(
+            child: Form(
+              key: formKey,
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                TextFormField(controller: nameCtrl, decoration: const InputDecoration(labelText: '标记名', prefixIcon: Icon(Icons.label), isDense: false)),
+                const SizedBox(height: 8),
+                TextFormField(
+                  controller: ipCtrl, decoration: const InputDecoration(labelText: 'IP 地址', prefixIcon: Icon(Icons.computer), isDense: false),
+                  validator: (v) {
+                    if (v == null || v.isEmpty) return '请输入 IP';
+                    final parts = v.trim().split('.');
+                    if (parts.length != 4) return 'IP 格式错误';
+                    for (final p in parts) { final n = int.tryParse(p); if (n == null || n < 0 || n > 255) return 'IP 格式错误'; }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 8),
+                TextFormField(controller: portCtrl, decoration: const InputDecoration(labelText: '端口', prefixIcon: Icon(Icons.numbers), isDense: false), keyboardType: TextInputType.number),
+                const SizedBox(height: 8),
+                TextFormField(controller: userCtrl, decoration: const InputDecoration(labelText: '用户名', prefixIcon: Icon(Icons.person), isDense: false)),
+                const SizedBox(height: 8),
+                TextFormField(controller: passCtrl, decoration: const InputDecoration(labelText: '密码', prefixIcon: Icon(Icons.lock), isDense: false), obscureText: true),
+              ]),
+            ),
           ),
         ),
         actions: [
@@ -546,30 +555,33 @@ class _HomePageState extends ConsumerState<HomePage> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('直连主机'),
-        content: SingleChildScrollView(
-          padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
-          child: Form(
-            key: formKey,
-            child: Column(mainAxisSize: MainAxisSize.min, children: [
-              TextFormField(controller: nameCtrl, decoration: const InputDecoration(labelText: '标记名', prefixIcon: Icon(Icons.label), isDense: false)),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: ipCtrl, decoration: const InputDecoration(labelText: 'IP 地址', prefixIcon: Icon(Icons.computer), isDense: false),
-                validator: (v) {
-                  if (v == null || v.isEmpty) return '请输入 IP';
-                  final parts = v.trim().split('.');
-                  if (parts.length != 4) return 'IP 格式错误';
-                  for (final p in parts) { final n = int.tryParse(p); if (n == null || n < 0 || n > 255) return 'IP 格式错误'; }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 8),
-              TextFormField(controller: portCtrl, decoration: const InputDecoration(labelText: '端口', prefixIcon: Icon(Icons.numbers), isDense: false), keyboardType: TextInputType.number),
-              const SizedBox(height: 8),
-              TextFormField(controller: userCtrl, decoration: const InputDecoration(labelText: '用户名', prefixIcon: Icon(Icons.person), isDense: false), validator: (v) => (v == null || v.isEmpty) ? '请输入用户名' : null),
-              const SizedBox(height: 8),
-              TextFormField(controller: passCtrl, decoration: const InputDecoration(labelText: '密码', prefixIcon: Icon(Icons.lock), isDense: false), obscureText: true),
-            ]),
+        content: GestureDetector(
+          onTap: () => FocusScope.of(ctx).unfocus(),
+          child: SingleChildScrollView(
+            padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+            child: Form(
+              key: formKey,
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                TextFormField(controller: nameCtrl, decoration: const InputDecoration(labelText: '标记名', prefixIcon: Icon(Icons.label), isDense: false)),
+                const SizedBox(height: 8),
+                TextFormField(
+                  controller: ipCtrl, decoration: const InputDecoration(labelText: 'IP 地址', prefixIcon: Icon(Icons.computer), isDense: false),
+                  validator: (v) {
+                    if (v == null || v.isEmpty) return '请输入 IP';
+                    final parts = v.trim().split('.');
+                    if (parts.length != 4) return 'IP 格式错误';
+                    for (final p in parts) { final n = int.tryParse(p); if (n == null || n < 0 || n > 255) return 'IP 格式错误'; }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 8),
+                TextFormField(controller: portCtrl, decoration: const InputDecoration(labelText: '端口', prefixIcon: Icon(Icons.numbers), isDense: false), keyboardType: TextInputType.number),
+                const SizedBox(height: 8),
+                TextFormField(controller: userCtrl, decoration: const InputDecoration(labelText: '用户名', prefixIcon: Icon(Icons.person), isDense: false), validator: (v) => (v == null || v.isEmpty) ? '请输入用户名' : null),
+                const SizedBox(height: 8),
+                TextFormField(controller: passCtrl, decoration: const InputDecoration(labelText: '密码', prefixIcon: Icon(Icons.lock), isDense: false), obscureText: true),
+              ]),
+            ),
           ),
         ),
         actions: [
