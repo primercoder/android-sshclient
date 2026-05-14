@@ -185,19 +185,6 @@ class ChatFilePanel extends ConsumerWidget {
       localPath = '${appDir.path}/$filename';
     }
 
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('下载确认'),
-        content: Text('下载 $remotePath\n到 $localPath'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('下载')),
-        ],
-      ),
-    );
-    if (confirm != true || !context.mounted) return;
-
     final sshService = ref.read(sshClientServiceProvider);
     if (sshService.client == null) {
       ref.read(chatProvider.notifier).addSystemMessage('SSH 未连接');
