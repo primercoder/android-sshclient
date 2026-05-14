@@ -82,8 +82,8 @@ class _HomePageState extends ConsumerState<HomePage> {
     }
   }
 
-  void _pauseScan() => _scanAbort?.pause();
-  void _resumeScan() => _scanAbort?.resume();
+  void _pauseScan() { _scanAbort?.pause(); setState(() {}); }
+  void _resumeScan() { _scanAbort?.resume(); setState(() {}); }
   void _stopScan() { _scanAbort?.stop(); setState(() => _isScanning = false); }
 
   bool _isHostConnected(Host host) {
