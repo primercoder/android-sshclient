@@ -194,6 +194,87 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     } catch (_) {}
   }
 
+  Future<void> _reorderQuickCommand(int oldIndex, int newIndex) async {
+    if (newIndex > oldIndex) newIndex--;
+    final cmd = _quickCommands.removeAt(oldIndex);
+    _quickCommands.insert(newIndex, cmd);
+    try {
+      final dao = await ref.read(quickCommandDaoProvider.future);
+      for (int i = 0; i < _quickCommands.length; i++) {
+        dao.update(_quickCommands[i].copyWith(sortOrder: i));
+      }
+    } catch (_) {}
+    setState(() {});
+  }
+
+  void _showManageSheet() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Row(
+                  children: [
+                    const Text('快捷命令管理',
+                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                    const Spacer(),
+                    FilledButton.tonalIcon(
+                      onPressed: () { Navigator.pop(ctx); _addQuickCommand(); },
+                      icon: const Icon(Icons.add, size: 18),
+                      label: const Text('添加'),
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(),
+              Flexible(
+                child: _quickCommands.isEmpty
+                    ? const Padding(padding: EdgeInsets.all(24), child: Text('暂无快捷命令'))
+                    : ReorderableListView.builder(
+                        shrinkWrap: true,
+                        itemCount: _quickCommands.length,
+                        onReorder: (o, n) {
+                          Navigator.pop(ctx);
+                          _reorderQuickCommand(o, n);
+                        },
+                        itemBuilder: (ctx, i) {
+                          final cmd = _quickCommands[i];
+                          return ListTile(
+                            key: ValueKey(cmd.commandId ?? i),
+                            leading: const Icon(Icons.drag_handle),
+                            title: Text(cmd.label, style: const TextStyle(fontSize: 14)),
+                            subtitle: Text(cmd.command,
+                                style: const TextStyle(fontFamily: 'monospace', fontSize: 12)),
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  icon: Icon(Icons.edit, size: 18, color: Colors.grey[600]),
+                                  onPressed: () { Navigator.pop(ctx); _editQuickCommand(cmd); },
+                                ),
+                                IconButton(
+                                  icon: Icon(Icons.delete, size: 18, color: Colors.red[300]),
+                                  onPressed: () { Navigator.pop(ctx); _deleteQuickCommand(cmd); },
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   String get _hostName {
     if (widget.host != null) {
       return widget.host!.displayName.isNotEmpty ? widget.host!.displayName : widget.host!.currentIp;
@@ -455,9 +536,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
             if (!widget.readOnly && _connected) ChatSuggestionChips(
               commands: _quickCommands,
               onSelected: _appendCommand,
-              onAdd: _addQuickCommand,
-              onEdit: _editQuickCommand,
-              onDelete: _deleteQuickCommand,
+              onManage: _showManageSheet,
             ),
 
             if (!widget.readOnly && _connected && _showFilePanel && widget.host != null)
