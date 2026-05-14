@@ -2,10 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:ssh_client/providers/chat_provider.dart';
-import 'package:ssh_client/providers/providers.dart';
 
 class ChatPathIndicator extends ConsumerStatefulWidget {
-  const ChatPathIndicator({super.key});
+  final Future<String> Function(String command) onExecute;
+
+  const ChatPathIndicator({super.key, required this.onExecute});
 
   @override
   ConsumerState<ChatPathIndicator> createState() => _ChatPathIndicatorState();
@@ -76,29 +77,25 @@ class _ChatPathIndicatorState extends ConsumerState<ChatPathIndicator> {
 
   void _showDirDropdown() async {
     setState(() => _loading = true);
-    final path = ref.read(chatProvider).currentDirectory;
-    final ssh = ref.read(sshClientServiceProvider);
 
     try {
-      // Use ls -la: lines starting with 'd' at char 0 are directories
-      final output = await ssh.execute('cd "$path" && ls -la && pwd');
-      final lines = output.trim().split('\n');
+      final raw = await widget.onExecute('ls -la');
+      final lines = raw.trim().split('\n');
       if (lines.isEmpty) { setState(() => _loading = false); return; }
 
-      // Last line = pwd
       final newPwd = lines.last.trim();
       if (newPwd.startsWith('/')) {
         ref.read(chatProvider.notifier).setDirectory(newPwd);
       }
 
-      // Collect directory names from ls -la output
-      final dirs = <String>['..'];
+      final dirs = <String>[];
       for (final line in lines) {
-        if (line.length < 2 || !line.startsWith('d')) continue;
-        final parts = line.split(RegExp(r'\s+'));
+        final trimmed = line.trim();
+        if (trimmed.length < 2 || !trimmed.startsWith('d')) continue;
+        final parts = trimmed.split(RegExp(r'\s+'));
         if (parts.length >= 9) {
           final name = parts.sublist(8).join(' ');
-          if (name != '.' && name != '..' && name.isNotEmpty) {
+          if (name != '.' && name.isNotEmpty) {
             dirs.add(name);
           }
         }
@@ -171,7 +168,7 @@ class _ChatPathIndicatorState extends ConsumerState<ChatPathIndicator> {
                                 return ListTile(
                                   dense: true,
                                   leading: Icon(
-                                    dir == '..' ? Icons.subdirectory_arrow_left : Icons.folder,
+                                    Icons.folder,
                                     size: 18, color: Colors.amber[700],
                                   ),
                                   title: Text(dir, style: const TextStyle(fontSize: 13, fontFamily: 'monospace')),
@@ -196,20 +193,14 @@ class _ChatPathIndicatorState extends ConsumerState<ChatPathIndicator> {
     overlay.insert(_overlay!);
   }
 
-  void _cdInto(String dir) {
-    final path = ref.read(chatProvider).currentDirectory;
-    final ssh = ref.read(sshClientServiceProvider);
-
-    String newPath;
-    if (dir == '..') {
-      if (path == '/') return;
-      newPath = path.substring(0, path.lastIndexOf('/'));
-      if (newPath.isEmpty) newPath = '/';
-    } else {
-      newPath = path == '/' ? '/$dir' : '$path/$dir';
+  Future<void> _cdInto(String dir) async {
+    try {
+      await widget.onExecute('cd "$dir"');
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('目录切换失败: $e')),
+      );
     }
-
-    ref.read(chatProvider.notifier).setDirectory(newPath);
-    ssh.execute('cd "$newPath"').catchError((_) => '');
   }
 }

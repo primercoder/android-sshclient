@@ -42,11 +42,13 @@ class SessionDao {
   void insertSession(Session session) {
     _db.execute('''
       INSERT INTO sessions
-      (session_id, host_id, start_time, end_time, command_count, last_working_dir)
-      VALUES (?, ?, ?, ?, ?, ?)
+      (session_id, host_id, host_name, host_ip, start_time, end_time, command_count, last_working_dir)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     ''', [
       session.sessionId,
       session.hostId,
+      session.hostName,
+      session.hostIp,
       session.startTime.toIso8601String(),
       session.endTime?.toIso8601String(),
       session.commandCount,
@@ -57,9 +59,11 @@ class SessionDao {
   void updateSession(Session session) {
     _db.execute('''
       UPDATE sessions SET
-        end_time = ?, command_count = ?, last_working_dir = ?
+        host_name = ?, host_ip = ?, end_time = ?, command_count = ?, last_working_dir = ?
       WHERE session_id = ?
     ''', [
+      session.hostName,
+      session.hostIp,
       session.endTime?.toIso8601String(),
       session.commandCount,
       session.lastWorkingDir,
@@ -75,12 +79,21 @@ class SessionDao {
     _db.execute('DELETE FROM sessions WHERE session_id = ?', [sessionId]);
   }
 
-  /// Expose raw db for advanced operations
+  int countSessionsByHost(String hostId) {
+    final result = _db.select(
+      'SELECT COUNT(*) AS cnt FROM sessions WHERE host_id = ?',
+      [hostId],
+    );
+    return result.first['cnt'] as int;
+  }
+
   Database get db => _db;
 
   Session _fromRow(Row row) => Session(
     sessionId: row['session_id'] as String,
     hostId: row['host_id'] as String,
+    hostName: row['host_name'] as String? ?? '',
+    hostIp: row['host_ip'] as String? ?? '',
     startTime: DateTime.parse(row['start_time'] as String),
     endTime: row['end_time'] != null ? DateTime.parse(row['end_time'] as String) : null,
     commandCount: row['command_count'] as int? ?? 0,

@@ -72,6 +72,20 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     }
   }
 
+  String get _hostName {
+    if (widget.host != null) {
+      return widget.host!.displayName.isNotEmpty ? widget.host!.displayName : widget.host!.currentIp;
+    }
+    if (widget.directConnectInfo != null) return widget.directConnectInfo!.username;
+    return '';
+  }
+
+  String get _hostIp {
+    if (widget.host != null) return widget.host!.currentIp;
+    if (widget.directConnectInfo != null) return widget.directConnectInfo!.ip;
+    return '';
+  }
+
   Future<void> _initSession() async {
     final sshService = ref.read(sshClientServiceProvider);
     final sshConn = ref.read(sshConnectionProvider.notifier);
@@ -83,17 +97,33 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     }
 
     setState(() => _connected = true);
-    await chat.startNewSession(hostId);
-    await chat.addSystemMessage('连接已建立 | $_subtitle');
+    final reused = await chat.startNewSession(hostId, hostName: _hostName, hostIp: _hostIp);
 
-    try {
-      final homeDir = await sshService.getHomeDirectory();
-      if (homeDir.isNotEmpty) {
-        chat.setDirectory(homeDir);
+    if (reused) {
+      // Restore last-known directory by verifying it still exists
+      final lastDir = ref.read(chatProvider).currentDirectory;
+      try {
+        final result = await sshService.execute('cd "$lastDir" && pwd');
+        final verified = result.trim();
+        if (verified.isNotEmpty && verified.startsWith('/')) {
+          chat.setDirectory(verified);
+        }
+      } catch (_) {
+        try {
+          final homeDir = await sshService.getHomeDirectory();
+          if (homeDir.isNotEmpty) chat.setDirectory(homeDir);
+        } catch (_) {}
       }
-    } catch (_) {}
-
-    await chat.addSystemMessage('提示: 在下方输入命令，按回车发送');
+    } else {
+      await chat.addSystemMessage('连接已建立 | $_subtitle');
+      try {
+        final homeDir = await sshService.getHomeDirectory();
+        if (homeDir.isNotEmpty) {
+          chat.setDirectory(homeDir);
+        }
+      } catch (_) {}
+      await chat.addSystemMessage('提示: 在下方输入命令，按回车发送');
+    }
   }
 
   void _scrollToBottom() {
@@ -108,29 +138,41 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     });
   }
 
+  /// Execute a raw command wrapped with cd prefix and pwd suffix,
+  /// parse the new working directory from the last output line,
+  /// update the path bar, and return the raw output (caller uses it
+  /// for parsing directory listings etc.).  Does NOT add anything to chat.
+  Future<String> _executeWrapped(String command) async {
+    final sshService = ref.read(sshClientServiceProvider);
+    final currentPwd = ref.read(chatProvider).currentDirectory;
+
+    final wrapped = 'cd "$currentPwd" && $command && pwd';
+    final raw = await sshService.execute(wrapped);
+    final output = raw.trim();
+
+    if (output.isNotEmpty) {
+      final lines = output.split('\n');
+      final newPwd = lines.last.trim();
+      if (newPwd.isNotEmpty && newPwd.startsWith('/')) {
+        ref.read(chatProvider.notifier).setDirectory(newPwd);
+      }
+    }
+    return output;
+  }
+
   Future<void> _sendCommand(String command) async {
     if (command.trim().isEmpty || !_connected) return;
 
     final chat = ref.read(chatProvider.notifier);
-    final sshService = ref.read(sshClientServiceProvider);
-    final currentPwd = ref.read(chatProvider).currentDirectory;
 
     await chat.addCommand(command);
 
     try {
-      // Wrap: cd to current dir, run command, then pwd to learn new dir
-      final wrapped = 'cd "$currentPwd" && $command && pwd';
-      final raw = await sshService.execute(wrapped);
-      final output = raw.trim();
+      final output = await _executeWrapped(command);
 
       if (output.isEmpty) return;
 
       final lines = output.split('\n');
-      final newPwd = lines.last.trim();
-
-      if (newPwd.isNotEmpty && newPwd.startsWith('/')) {
-        chat.setDirectory(newPwd);
-      }
 
       // Everything except the last line (the pwd result) is the command output
       if (lines.length > 1) {
@@ -233,7 +275,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
         ),
         body: Column(
           children: [
-            if (!widget.readOnly && _connected) const ChatPathIndicator(),
+            if (!widget.readOnly && _connected) ChatPathIndicator(onExecute: _executeWrapped),
 
             Expanded(
               child: chatState.messages.isEmpty && !_error

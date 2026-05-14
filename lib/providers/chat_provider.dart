@@ -4,7 +4,6 @@ import 'package:ssh_client/data/models/session.dart';
 import 'package:ssh_client/data/database/dao/message_dao.dart';
 import 'package:ssh_client/data/database/dao/session_dao.dart';
 import 'package:ssh_client/providers/providers.dart';
-import 'package:uuid/uuid.dart';
 
 class ChatState {
   final List<ChatMessage> messages;
@@ -46,9 +45,8 @@ class ChatNotifier extends StateNotifier<ChatState> {
   final Ref _ref;
   MessageDao? _messageDao;
   SessionDao? _sessionDao;
-  static const _uuid = Uuid();
 
-  /// Track active sessions per hostId so re-entering reuses the same one
+  /// Active sessions keyed by sessionId
   final Map<String, Session> _activeSessions = {};
 
   ChatNotifier(this._ref) : super(const ChatState());
@@ -63,21 +61,13 @@ class ChatNotifier extends StateNotifier<ChatState> {
     return _sessionDao!;
   }
 
-  Future<void> loadSession(Session session) async {
-    final msgDao = await _messageDaoAsync;
-    final messages = msgDao.getMessagesBySession(session.sessionId);
-    _activeSessions[session.hostId] = session;
-    state = ChatState(
-      messages: messages,
-      currentDirectory: session.lastWorkingDir,
-      currentSession: session,
-    );
-  }
-
-  Future<void> startNewSession(String hostId) async {
-    // Reuse active session if exists (keep-session flow)
-    if (_activeSessions.containsKey(hostId)) {
-      final session = _activeSessions[hostId]!;
+  /// Start a new session or reuse an existing active one for this host.
+  /// [hostName] is the display name, [hostIp] is the IP address.
+  /// Returns `true` if an existing session was reused, `false` for a brand new session.
+  Future<bool> startNewSession(String hostId, {String hostName = '', String hostIp = ''}) async {
+    final existing = _activeSessions.values.where((s) => s.hostId == hostId).toList();
+    if (existing.isNotEmpty) {
+      final session = existing.first;
       final msgDao = await _messageDaoAsync;
       final messages = msgDao.getMessagesBySession(session.sessionId);
       state = ChatState(
@@ -85,35 +75,73 @@ class ChatNotifier extends StateNotifier<ChatState> {
         currentDirectory: session.lastWorkingDir,
         currentSession: session,
       );
-      return;
+      return true;
     }
 
     final sessDao = await _sessionDaoAsync;
     final session = Session(
-      sessionId: _uuid.v4(),
+      sessionId: Session.generateId(hostName.isNotEmpty ? hostName : hostIp, hostIp),
       hostId: hostId,
+      hostName: hostName,
+      hostIp: hostIp,
       startTime: DateTime.now(),
     );
     sessDao.insertSession(session);
-    _activeSessions[hostId] = session;
+    _activeSessions[session.sessionId] = session;
     state = ChatState(currentSession: session);
+    return false;
   }
 
-  /// Called when user explicitly disconnects the SSH session
-  void endSession(String hostId) {
-    _activeSessions.remove(hostId);
+  Future<void> loadSession(Session session) async {
+    final msgDao = await _messageDaoAsync;
+    final messages = msgDao.getMessagesBySession(session.sessionId);
+    _activeSessions[session.sessionId] = session;
+    state = ChatState(
+      messages: messages,
+      currentDirectory: session.lastWorkingDir,
+      currentSession: session,
+    );
+  }
+
+  /// End the active session for [hostId]: set endTime, persist, and remove
+  /// from the active-session map so it becomes a history record.
+  Future<void> endSession(String hostId) async {
+    final matches = _activeSessions.values.where((s) => s.hostId == hostId).toList();
+    for (final session in matches) {
+      final updated = session.copyWith(endTime: DateTime.now());
+      _activeSessions.remove(session.sessionId);
+      try {
+        final sessDao = await _sessionDaoAsync;
+        sessDao.updateSession(updated);
+        if (state.currentSession?.sessionId == session.sessionId) {
+          state = state.copyWith(
+            currentSession: updated,
+            messages: const [],
+            currentDirectory: '/',
+          );
+        }
+      } catch (_) {}
+    }
   }
 
   void clearActiveSessions() {
     _activeSessions.clear();
   }
 
+  /// Returns true if [hostId] has any active session
+  bool hasActiveSession(String hostId) {
+    return _activeSessions.values.any((s) => s.hostId == hostId);
+  }
+
+  /// Returns the list of hostIds that currently have active sessions
+  List<String> get activeHostIds => _activeSessions.values.map((s) => s.hostId).toSet().toList();
+
   Future<void> addCommand(String command) async {
     if (state.currentSession == null) return;
     final msgDao = await _messageDaoAsync;
 
     final msg = ChatMessage(
-      messageId: _uuid.v4(),
+      messageId: Session.generateId('cmd', DateTime.now().millisecondsSinceEpoch.toString()),
       sessionId: state.currentSession!.sessionId,
       type: MessageType.command,
       content: command,
@@ -132,7 +160,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
     final msgDao = await _messageDaoAsync;
 
     final msg = ChatMessage(
-      messageId: _uuid.v4(),
+      messageId: Session.generateId('out', DateTime.now().millisecondsSinceEpoch.toString()),
       sessionId: state.currentSession!.sessionId,
       type: MessageType.output,
       content: output,
@@ -148,7 +176,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
     final msgDao = await _messageDaoAsync;
 
     final msg = ChatMessage(
-      messageId: _uuid.v4(),
+      messageId: Session.generateId('sys', DateTime.now().millisecondsSinceEpoch.toString()),
       sessionId: state.currentSession!.sessionId,
       type: MessageType.system,
       content: content,
@@ -163,7 +191,14 @@ class ChatNotifier extends StateNotifier<ChatState> {
   }
 
   void setDirectory(String dir) {
-    state = state.copyWith(currentDirectory: dir);
+    final cur = state.currentSession;
+    if (cur != null && _activeSessions.containsKey(cur.sessionId)) {
+      final updated = cur.copyWith(lastWorkingDir: dir);
+      _activeSessions[cur.sessionId] = updated;
+      state = state.copyWith(currentDirectory: dir, currentSession: updated);
+    } else {
+      state = state.copyWith(currentDirectory: dir);
+    }
   }
 
   void setAutoScroll(bool value) {

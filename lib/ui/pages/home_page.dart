@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 import 'package:ssh_client/providers/providers.dart';
+import 'package:ssh_client/providers/chat_provider.dart';
 import 'package:ssh_client/providers/ssh_connection_provider.dart';
 import 'package:ssh_client/data/models/host.dart';
 import 'package:ssh_client/data/models/direct_connect_info.dart';
@@ -79,6 +80,7 @@ class _HomePageState extends ConsumerState<HomePage> {
 
   Future<void> _connectToHost({Host? host, String? ip, int port = 22, String? username, String? password}) async {
     final notifier = ref.read(sshConnectionProvider.notifier);
+    final connState = ref.read(sshConnectionProvider);
 
     final connInfo = SshConnectionInfo(
       host: ip ?? host!.currentIp,
@@ -86,6 +88,25 @@ class _HomePageState extends ConsumerState<HomePage> {
       username: username ?? host?.username ?? 'root',
       password: password ?? host?.password ?? '',
     );
+
+    // Already connected to the same host — skip reconnecting
+    if (connState == SshConnectionState.connected &&
+        notifier.activeConnection != null &&
+        notifier.activeConnection!.host == connInfo.host &&
+        notifier.activeConnection!.port == connInfo.port &&
+        notifier.activeConnection!.username == connInfo.username) {
+      if (!mounted) return;
+      Navigator.push(context,
+        MaterialPageRoute(builder: (_) => ChatPage(
+          host: host,
+          directConnectInfo: host == null ? DirectConnectInfo(
+            ip: connInfo.host, port: connInfo.port,
+            username: connInfo.username, password: connInfo.password ?? '',
+          ) : null,
+        )),
+      );
+      return;
+    }
 
     if (!mounted) return;
     showDialog(
@@ -198,23 +219,53 @@ class _HomePageState extends ConsumerState<HomePage> {
     );
   }
 
-  void _confirmDelete(Host host) {
-    showDialog(
+  Future<void> _confirmDelete(Host host) async {
+    final hasActive = ref.read(chatProvider.notifier).hasActiveSession(host.hostId);
+
+    if (!mounted) return;
+    final action = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('删除主机'),
-        content: Text('确定删除 "${host.displayName}"？'),
+        content: Text(hasActive
+            ? '主机 "${host.displayName}" 存在活跃会话。'
+                '断开连接后历史记录保留不受影响，确定删除？'
+            : '确定删除 "${host.displayName}"？\n历史会话记录不受影响。'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
-          FilledButton(onPressed: () async {
-            final dao = await ref.read(hostDaoProvider.future);
-            dao.deleteHost(host.hostId);
-            Navigator.pop(ctx);
-            _loadHosts();
-          }, child: const Text('删除'), style: FilledButton.styleFrom(backgroundColor: Colors.red)),
+          TextButton(onPressed: () => Navigator.pop(ctx, 'cancel'), child: const Text('取消')),
+          if (hasActive)
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, 'force_delete'),
+              child: const Text('断开并删除'),
+              style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            ),
+          if (!hasActive)
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, 'delete'),
+              child: const Text('删除'),
+              style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            ),
         ],
       ),
     );
+    if (action == null || action == 'cancel') return;
+
+    final dao = await ref.read(hostDaoProvider.future);
+
+    // End active sessions for this host (remove from in-memory tracking only)
+    if (hasActive) {
+      ref.read(chatProvider.notifier).endSession(host.hostId);
+    }
+
+    // Delete host record only — history (sessions + messages) stays intact.
+    // Temporarily disable FK so the delete goes through even though
+    // historical sessions still reference this hostId.
+    final sessDao = await ref.read(sessionDaoProvider.future);
+    sessDao.db.execute('PRAGMA foreign_keys = OFF');
+    dao.deleteHost(host.hostId);
+    sessDao.db.execute('PRAGMA foreign_keys = ON');
+
+    _loadHosts();
   }
 
   void _showScanAddDialog(ScanResult scanResult) {

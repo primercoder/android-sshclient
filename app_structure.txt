@@ -2,6 +2,7 @@
   Bug History (用户反馈记录)
 ================================================================================
 
+
 v1 问题: SSH shell模式, broadcast stream数据丢失, 直连失败
   - StreamController.broadcast() 无监听者时丢弃数据 → shell提示符丢失
   - 直连和收藏路径不一致 → singleton provider 状态污染

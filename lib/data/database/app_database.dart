@@ -5,6 +5,7 @@ import 'package:sqlite3/sqlite3.dart';
 import 'package:sqlite3_flutter_libs/sqlite3_flutter_libs.dart';
 
 class AppDatabase {
+  static const int _version = 2;
   static AppDatabase? _instance;
   late final Database _db;
 
@@ -35,6 +36,8 @@ class AppDatabase {
   void _init() {}
 
   void _migrate() {
+    final oldVersion = _db.select('PRAGMA user_version').first.values.first as int;
+
     _db.execute('''
       CREATE TABLE IF NOT EXISTS hosts (
         host_id            TEXT PRIMARY KEY,
@@ -64,6 +67,11 @@ class AppDatabase {
         last_working_dir   TEXT DEFAULT '/'
       )
     ''');
+
+    if (oldVersion < 2) {
+      _tryAddColumn('sessions', 'host_name', 'TEXT NOT NULL DEFAULT \'\'');
+      _tryAddColumn('sessions', 'host_ip', 'TEXT NOT NULL DEFAULT \'\'');
+    }
 
     _db.execute('''
       CREATE TABLE IF NOT EXISTS chat_messages (
@@ -105,7 +113,15 @@ class AppDatabase {
       )
     ''');
 
+    _db.execute('PRAGMA user_version = $_version');
+
     _seedDefaultCommands();
+  }
+
+  void _tryAddColumn(String table, String column, String type) {
+    try {
+      _db.execute('ALTER TABLE $table ADD COLUMN $column $type');
+    } catch (_) {}
   }
 
   void _seedDefaultCommands() {
