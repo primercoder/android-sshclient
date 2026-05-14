@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:ssh_client/data/models/host.dart';
+import 'package:ssh_client/data/models/transfer_task.dart';
 import 'package:ssh_client/services/scp/scp_transfer_service.dart';
 import 'package:ssh_client/providers/providers.dart';
 import 'package:ssh_client/providers/chat_provider.dart';
@@ -102,7 +103,11 @@ class ChatFilePanel extends ConsumerWidget {
       );
       await ref.read(transferProvider.notifier).addTransfer(task);
       final chat = ref.read(chatProvider.notifier);
-      await chat.addSystemMessage('📄 上传完成: ${file.name} → $remotePath');
+      if (task.status == TransferStatus.completed) {
+        await chat.addSystemMessage('📄 上传完成: ${file.name} → $remotePath');
+      } else {
+        await chat.addSystemMessage('⚠️ 上传失败: ${task.errorMessage ?? '未知错误'}');
+      }
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -199,9 +204,13 @@ class ChatFilePanel extends ConsumerWidget {
 
       await ref.read(transferProvider.notifier).addTransfer(task);
       final chat = ref.read(chatProvider.notifier);
-      await chat.addSystemMessage('📥 下载完成: $filename → $savePath');
+      if (task.status == TransferStatus.completed) {
+        await chat.addSystemMessage('📥 下载完成: $filename → $savePath');
+      } else {
+        await chat.addSystemMessage('⚠️ 下载失败: ${task.errorMessage ?? '未知错误'}');
+      }
 
-      if (context.mounted) {
+      if (context.mounted && task.status == TransferStatus.completed) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('已保存到: $savePath')),
         );
