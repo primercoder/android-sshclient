@@ -104,14 +104,26 @@ class ChatFilePanel extends ConsumerWidget {
       await ref.read(transferProvider.notifier).addTransfer(task);
       final chat = ref.read(chatProvider.notifier);
       if (task.status == TransferStatus.completed) {
-        await chat.addSystemMessage('📄 上传完成: ${file.name} → $remotePath');
+        final msg = '上传完成: ${file.name} → $remotePath';
+        await chat.addSystemMessage('📄 $msg');
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(msg)),
+          );
+        }
       } else {
-        await chat.addSystemMessage('⚠️ 上传失败: ${task.errorMessage ?? '未知错误'}');
+        final err = task.errorMessage ?? '未知错误';
+        await chat.addSystemMessage('⚠️ 上传失败: $err');
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('上传失败: $err'), backgroundColor: Colors.red[700]),
+          );
+        }
       }
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('上传失败: $e')),
+          SnackBar(content: Text('上传失败: $e'), backgroundColor: Colors.red[700]),
         );
       }
     }
@@ -205,20 +217,26 @@ class ChatFilePanel extends ConsumerWidget {
       await ref.read(transferProvider.notifier).addTransfer(task);
       final chat = ref.read(chatProvider.notifier);
       if (task.status == TransferStatus.completed) {
-        await chat.addSystemMessage('📥 下载完成: $filename → $savePath');
+        final msg = '下载完成: $filename → $savePath';
+        await chat.addSystemMessage('📥 $msg');
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(msg)),
+          );
+        }
       } else {
-        await chat.addSystemMessage('⚠️ 下载失败: ${task.errorMessage ?? '未知错误'}');
-      }
-
-      if (context.mounted && task.status == TransferStatus.completed) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('已保存到: $savePath')),
-        );
+        final err = task.errorMessage ?? '未知错误';
+        await chat.addSystemMessage('⚠️ 下载失败: $err');
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('下载失败: $err'), backgroundColor: Colors.red[700]),
+          );
+        }
       }
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('下载失败: $e')),
+          SnackBar(content: Text('下载失败: $e'), backgroundColor: Colors.red[700]),
         );
       }
     }

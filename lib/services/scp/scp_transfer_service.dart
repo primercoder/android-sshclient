@@ -10,9 +10,8 @@ class ScpTransferService {
 
   ScpTransferService(this._client);
 
-  void _write(SSHSession session, List<int> data) {
-    session.stdin.add(Uint8List.fromList(data));
-  }
+  void _write(SSHSession s, List<int> data) =>
+      s.stdin.add(Uint8List.fromList(data));
 
   /// Read the next chunk from the SCP stdout stream iterator.
   Future<List<int>> _nextChunk(StreamIterator<List<int>> iter,
@@ -21,8 +20,8 @@ class ScpTransferService {
     throw Exception('SCP stream ended unexpectedly');
   }
 
-  /// Accumulate stdout chunks until a newline (0x0a) is found and return
-  /// the line as a UTF-8 string (newline excluded).
+  /// Accumulate stdout chunks until a newline (0x0a) and return the
+  /// line as UTF-8 text (newline excluded).
   Future<String> _readLine(StreamIterator<List<int>> iter,
       {Duration timeout = const Duration(seconds: 15)}) async {
     final buf = <int>[];
@@ -37,9 +36,29 @@ class ScpTransferService {
     }
   }
 
-  // ---------------------------------------------------------------------------
-  // Upload
-  // ---------------------------------------------------------------------------
+  /// Collect all stderr output from [session] into a single string,
+  /// with a short timeout so the method doesn't block indefinitely.
+  Future<String> _collectStderr(SSHSession session) async {
+    final buf = <int>[];
+    try {
+      await for (final chunk in session.stderr) {
+        buf.addAll(chunk);
+      }
+    } catch (_) {}
+    return utf8.decode(buf).trim();
+  }
+
+  // --------------------------------------------------------------------------
+  // Upload  –  remote runs `scp -t <dir>` (receiver)
+  // --------------------------------------------------------------------------
+  //
+  // Protocol:
+  //   1. remote → \0         (ready)
+  //   2. us     → "C<perms> <size> <name>\n"
+  //   3. remote → \0         (header ack)
+  //   4. us     → <file data>
+  //   5. us     → \0         (eof)
+  //   6. remote → \0         (done) & closes channel
 
   Future<TransferTask> uploadFile({
     required String localPath,
@@ -67,44 +86,44 @@ class ScpTransferService {
     final iter = StreamIterator(session.stdout);
 
     try {
-      // SCP upload protocol:
-      //   1. receiver sends \0 (ready)
-      //   2. sender sends "C0644 <size> <name>\n"  (header)
-      //   3. receiver sends \0 (header ack)
-      //   4. sender sends <file data>
-      //   5. sender sends \0 (eof)
-      //   6. receiver sends \0 (done) & closes
-
-      await _nextChunk(iter);                              // 1
+      await _nextChunk(iter);                                    // 1
       _write(session, utf8.encode('C0644 $fileSize $filename\n')); // 2
-      await _nextChunk(iter);                              // 3
+      await _nextChunk(iter);                                    // 3
 
-      int bytesSent = 0;
-      final fileStream = file.openRead();
-      await for (final chunk in fileStream) {
+      int sent = 0;
+      final src = file.openRead();
+      await for (final chunk in src) {
         _write(session, chunk);
-        bytesSent += chunk.length;
+        sent += chunk.length;
       }
-
-      _write(session, [0]);                                // 5
-      await session.done;                                  // 6
+      _write(session, [0]);                                      // 5
+      await session.done;                                        // 6
 
       return task.copyWith(
         status: TransferStatus.completed,
-        bytesTransferred: bytesSent,
+        bytesTransferred: sent,
         completedAt: DateTime.now(),
       );
     } catch (e) {
+      final stderr = await _collectStderr(session);
       return task.copyWith(
         status: TransferStatus.failed,
-        errorMessage: e.toString(),
+        errorMessage: stderr.isNotEmpty ? stderr : e.toString(),
       );
     }
   }
 
-  // ---------------------------------------------------------------------------
-  // Download
-  // ---------------------------------------------------------------------------
+  // --------------------------------------------------------------------------
+  // Download  –  remote runs `scp -f <file>` (sender)
+  // --------------------------------------------------------------------------
+  //
+  // Protocol:
+  //   1. remote → "C<perms> <size> <name>\n"
+  //   2. us     → \0                            (header ack)
+  //   3. remote → <file data>                   (<size> bytes)
+  //   4. remote → \0                            (done marker via transmit())
+  //   5. us     → \0                            (final ack)
+  //   6. remote closes channel
 
   Future<TransferTask> downloadFile({
     required String remotePath,
@@ -130,49 +149,45 @@ class ScpTransferService {
     final iter = StreamIterator(session.stdout);
 
     try {
-      // SCP download protocol:
-      //   1. sender sends \0 (ready)
-      //   2. receiver sends "C0644 <size> <name>\n"  (header)
-      //   3. sender sends \0 (header ack)
-      //   4. receiver sends <file data>  (<size> bytes)
-      //   5. receiver sends \0 (done) & closes
-
-      _write(session, [0]);                                // 1
-
-      final header = await _readLine(iter);                // 2
+      // 1. Remote sends header first (no init needed from us)
+      final header = await _readLine(iter);
       final parts = header.split(' ');
       if (parts.length < 3) {
-        throw Exception('Unexpected SCP response: $header');
+        throw Exception('Unexpected SCP header: $header');
       }
       final fileSize = int.tryParse(parts[1]) ?? 0;
 
-      _write(session, [0]);                                // 3
+      // 2. Acknowledge header – remote proceeds to send file data
+      _write(session, [0]);
 
+      // 3+4. Read file data (fileSize bytes).  The trailing \0 from
+      // the remote's transmit() may be in the same or the next chunk.
       final sink = localFile.openWrite();
-      int bytesReceived = 0;
-      while (bytesReceived < fileSize && await iter.moveNext()) {
+      int received = 0;
+      while (received < fileSize && await iter.moveNext()) {
         final chunk = iter.current;
-        final remaining = fileSize - bytesReceived;
-        final toWrite = chunk.length > remaining
-            ? chunk.sublist(0, remaining)
-            : chunk;
+        final need = fileSize - received;
+        final toWrite = chunk.length > need ? chunk.sublist(0, need) : chunk;
         sink.add(toWrite);
-        bytesReceived += toWrite.length;
+        received += toWrite.length;
       }
-
       await sink.flush();
       await sink.close();
+
+      // 5. Send final ack – remote reads \0 and exits
+      _write(session, [0]);
       await session.done;
 
       return task.copyWith(
         status: TransferStatus.completed,
-        bytesTransferred: bytesReceived,
+        bytesTransferred: received,
         completedAt: DateTime.now(),
       );
     } catch (e) {
+      final stderr = await _collectStderr(session);
       return task.copyWith(
         status: TransferStatus.failed,
-        errorMessage: e.toString(),
+        errorMessage: stderr.isNotEmpty ? stderr : e.toString(),
       );
     }
   }
