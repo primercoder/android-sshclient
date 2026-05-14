@@ -1,7 +1,6 @@
-================================================================================
+===============================================================================
   Bug History (用户反馈记录)
-================================================================================
-
+===============================================================================
 
 v1 问题: SSH shell模式, broadcast stream数据丢失, 直连失败
   - StreamController.broadcast() 无监听者时丢弃数据 → shell提示符丢失
@@ -29,9 +28,9 @@ v4 问题: cd包装后下拉目录仅显示'..', 会话不保持, 删除无效
   - 解决: ls -la 解析权限位'd'判断目录, ChatNotifier._activeSessions,
     不显式 scpSession.close(), 双输入框(远程+本地), 已测通
 
-================================================================================
+===============================================================================
   当前架构 (Current Architecture)
-================================================================================
+===============================================================================
 
 一、技术栈
   Flutter 3.41.9 | Dart 3.11.5 | dartssh2 2.17.1 | Riverpod 2.6.1
@@ -43,67 +42,88 @@ v4 问题: cd包装后下拉目录仅显示'..', 会话不保持, 删除无效
   │  ├── 已添加主机: 带 已连接/未连接 状态                       │
   │  │   └─ 点击 → 连接验证 → 进入会话                           │
   │  ├── 局域网扫描: ExpansionTile, CIDR输入, 流式结果           │
-  │  │   └─ 结果: '添加'→ 弹凭据编辑 → 存入主机列表              │
+  │  │   └─ 批量扫描 100个/批, 3s间隔, 暂停/继续/停止             │
   │  ├── (+) FAB: 添加收藏主机                                   │
   │  └── (⚡) FAB: 直连(自动加入收藏)                            │
   │                                                                │
   │  会话页                                                       │
   │  ├── AppBar: 标题 + 在线指示器 + 历史/设置图标               │
   │  ├── 路径栏: 点击显示子目录下拉 (ls -la解析'd'标记)          │
-  │  │   └─ 子目录点击 → cd <dir> → 更新pwd                     │
+  │  │   └─ 排序: '..' → 非隐藏目录 → 隐藏目录                   │
   │  ├── 消息列表: 命令(右) / 输出(左) / 系统(中)               │
-  │  ├── 快捷命令Chips                                           │
-  │  ├── 文件面板: 上传/下载                                     │
+  │  │   └─ 气泡内横向滚动 / 自动换行切换 + 复制按钮             │
+  │  ├── 快捷命令: 自定义芯片, 添加/编辑/删除/拖拽排序           │
+  │  ├── 文件面板: SCP上传/SCP下载(cat)                          │
   │  └── 输入栏 (连接后启用)                                     │
   │                                                                │
-  │  历史页: 按主机分组显示所有消息(平铺)                        │
-  │  设置页: 深色模式 + 下载目录                                 │
+  │  历史页: 按会话展示历史记录                                   │
+  │  设置页: 深色模式 + 下载目录                                  │
   └──────────────────────────────────────────────────────────────┘
 
 三、命令执行引擎
   每条命令包装为: cd "<当前pwd>" && <用户命令> && pwd
   输出解析: 末行 = 新pwd (更新顶部栏, 不显示在对话)
-           其余行 = 命令输出 (显示在对话)
+           其余行 + stderr = 命令输出 (显示在对话)
 
 四、路径下拉 (目录浏览)
   点击路径栏 → execute('cd "<pwd>" && ls -la && pwd')
   解析: 权限位首字符='d' → 目录 → 加入列表
-  点击目录 → setDirectory(newPwd) + execute('cd "<newPwd>"')
-  收起: 点击路径栏 或 点击透明遮罩
+  排序: '..' 最前 → 非隐藏目录(字母序) → 隐藏目录(字母序)
+  点击目录 → cd "<dir>" + 更新pwd
 
 五、会话生命周期
-  ChatNotifier._activeSessions: Map<hostId, Session>
-  - 进入: startNewSession(hostId) → 检查_activeSessions → 复用或新建
-  - 保持会话: 不调用endSession → _activeSessions保留 → 下次复用
-  - 断开会话: endSession(hostId) + sshConnectionProvider.disconnect()
-  - 删除限制: 如果会话活跃(在_activeSessions中) → 提示先断开
+  ChatNotifier._activeSessions: Map<sessionId, Session>
+  - 进入: startNewSession(hostId) → 复用活跃会话或新建
+  - 保持会话: 不调用endSession → _activeSessions保留
+  - 主页断开: endSession(hostId) + sshConnection.disconnect()
+  - 会话ID: generateId(hostName, hostIp, timestamp)
+  - endTime设入DB后变为历史记录
+  - 复用会话: 不显示"连接已建立", 通过cd "$lastDir" && pwd恢复pwd
 
 六、文件传输 (SCP)
-  上传: 输入远程路径(默认pwd) + FilePicker选取本地文件
-  下载: 输入远程路径(含文件名,默认pwd/) + 本地目录(默认设置值)
-  存储: 使用 FilePicker.platform.saveFile() (SAF, Android 14+)
+  上传: scp -t 协议 (StreamIterator增量读ack)
+  下载: SSH exec cat 读取远程文件 (避免SCP -f双向协议死锁)
+  下载路径: 优先用户配置目录, 回退app私有目录
+  错误: 通过\001 + msg检测SCP错误, 不读取stderr(避免死锁)
+  删除不完整文件: 下载失败时close sink + delete
 
 七、SSH会话管理
   连接: SSHSocket.connect() → SSHClient() → authenticate
   命令: client.execute(cmd, pty) → 新channel → utf8.decodeStream
-  文件: client.execute('scp -t/-f ...') → 新channel → 独立操作
+  命令(stderr): executeCombined() 同时收集stdout + stderr
+  文件: client.execute('scp -t/cat ...') → 新channel
   断开: client.close() → client=null → activeConnection=null
-  SCP与命令互不影响: 各自独立channel, 异常不传播到transport
 
-八、主题
+八、局域网扫描
+  CIDR解析: /16 ~ /30, 排除网络地址和广播地址
+  detectCurrentCidr: 读取/proc/net/route → NetworkInterface → 默认/24
+  批量扫描: 100个Socket.connect并发/批, 3秒批次间隔
+  暂停/继续: ScanAbort (Completer机制)
+  停止: ScanAbort.stop() 跳出循环
+  状态: ScanState (idle/scanning/paused) 控制UI动画
+
+九、快捷命令
+  quick_commands表存储 label + command + sortOrder
+  内置种子命令 (is_builtin=0, 可自由编辑删除)
+  ⋮按钮 → 管理面板 (ReorderableListView, 拖拽排序)
+  添加/编辑: 对话框输入显示名称 + 命令
+  删除: 无确认直接删除
+
+十、主题
   亮蓝 #2196F3 (light) / #64B5F6 (dark)
   Material3, colorSchemeSeed
   深色模式切换 (Provider<bool>)
 
-九、数据库表 (SQLite)
+十一、数据库表 (SQLite)
   hosts: host_id(UUID PK), display_name, current_ip, port,
          username, password, mac_address, host_key_fingerprint, ...
-  sessions: session_id(PK), host_id(FK), start_time, end_time, ...
+  sessions: session_id(PK), host_id, host_name, host_ip,
+            start_time, end_time, command_count, last_working_dir
   chat_messages: message_id(PK), session_id(FK), type, content, ...
   transfer_tasks: transfer_id(PK), session_id(FK), direction, ...
-  quick_commands: command_id(PK AUTO), label, command, category, ...
+  quick_commands: command_id(PK AUTO), label, command, sort_order, ...
 
-十、关键Provider
+十二、关键Provider
   sshClientServiceProvider    → SshClientService (singleton)
   sshConnectionProvider       → SshConnectionNotifier (state machine)
   chatProvider                → ChatNotifier (messages + sessions)
@@ -111,6 +131,7 @@ v4 问题: cd包装后下拉目录仅显示'..', 会话不保持, 删除无效
   hostDaoProvider             → HostDao (async)
   sessionDaoProvider          → SessionDao (async)
   messageDaoProvider          → MessageDao (async)
+  quickCommandDaoProvider     → QuickCommandDao (async)
   isDarkModeProvider          → bool
   downloadDirProvider         → String (下载目录)
-================================================================================
+===============================================================================
