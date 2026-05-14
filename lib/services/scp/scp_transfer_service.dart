@@ -20,6 +20,17 @@ class ScpTransferService {
     throw Exception('SCP stream ended unexpectedly');
   }
 
+  /// Snapshot stderr with a short timeout so callers never block forever.
+  Future<String> _stderrSnapshot(SSHSession session) async {
+    final buf = <int>[];
+    try {
+      await for (final chunk in session.stderr) {
+        buf.addAll(chunk);
+      }
+    } catch (_) {}
+    return utf8.decode(buf).trim();
+  }
+
   /// Accumulate chunks until a newline (0x0a) and return the line as
   /// UTF-8 text (newline excluded).
   Future<String> _readLine(StreamIterator<List<int>> iter,
@@ -131,7 +142,7 @@ class ScpTransferService {
     } catch (e) {
       return task.copyWith(
         status: TransferStatus.failed,
-        errorMessage: e.toString(),
+        errorMessage: '$filename → ${task.remotePath}: ${e.toString()}',
       );
     }
   }
@@ -173,7 +184,14 @@ class ScpTransferService {
 
     try {
       // 1. First chunk — check for error marker (0x01) or header (C...)
-      final first = await _nextChunk(iter);
+      List<int> first;
+      try {
+        first = await _nextChunk(iter);
+      } catch (_) {
+        // stdout produced nothing — collect stderr for the real error
+        final stderr = await _stderrSnapshot(session);
+        throw Exception(stderr.isNotEmpty ? stderr : 'SCP process produced no output');
+      }
       if (first.isNotEmpty && first[0] == 1) {
         String err;
         try {
@@ -217,9 +235,11 @@ class ScpTransferService {
         completedAt: DateTime.now(),
       );
     } catch (e) {
+      final stderr = await _stderrSnapshot(session);
+      final detail = stderr.isNotEmpty ? stderr : e.toString();
       return task.copyWith(
         status: TransferStatus.failed,
-        errorMessage: e.toString(),
+        errorMessage: '$filename ← ${task.remotePath}: $detail',
       );
     }
   }

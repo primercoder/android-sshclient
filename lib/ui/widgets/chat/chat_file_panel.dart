@@ -178,8 +178,12 @@ class ChatFilePanel extends ConsumerWidget {
   Future<void> _downloadFile(String remotePath, String downloadDir, BuildContext context, WidgetRef ref) async {
     final filename = remotePath.split('/').last;
 
-    // Use SAF to pick save location (works on Android 14+)
-    // Pre-fill with the filename, user can choose any location
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('正在准备下载...'), duration: Duration(seconds: 2)),
+      );
+    }
+
     final savePath = await FilePicker.platform.saveFile(
       dialogTitle: '保存到 (默认: $downloadDir)',
       fileName: filename,
@@ -203,6 +207,12 @@ class ChatFilePanel extends ConsumerWidget {
     if (sshService.client == null) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('SSH 未连接')));
       return;
+    }
+
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('正在传输...'), duration: Duration(seconds: 1)),
+      );
     }
 
     try {
