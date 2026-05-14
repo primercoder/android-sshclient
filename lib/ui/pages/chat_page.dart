@@ -138,12 +138,12 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     } catch (_) {}
   }
 
-  void _editQuickCommand(QuickCommand cmd) {
+  Future<void> _editQuickCommand(QuickCommand cmd) async {
     final nameCtrl = TextEditingController(text: cmd.label);
     final cmdCtrl = TextEditingController(text: cmd.command);
     final formKey = GlobalKey<FormState>();
 
-    showDialog(
+    await showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('编辑快捷命令'),
@@ -179,14 +179,14 @@ class _ChatPageState extends ConsumerState<ChatPage> {
               command: cmdCtrl.text.trim(),
             ));
             Navigator.pop(ctx);
-            _loadQuickCommands();
           }, child: const Text('保存')),
         ],
       ),
     );
+    _loadQuickCommands();
   }
 
-  void _deleteQuickCommand(QuickCommand cmd) async {
+  Future<void> _deleteQuickCommand(QuickCommand cmd) async {
     try {
       final dao = await ref.read(quickCommandDaoProvider.future);
       dao.delete(cmd.commandId!);
@@ -211,66 +211,83 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      builder: (ctx) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.only(top: 8),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Row(
-                  children: [
-                    const Text('快捷命令管理',
-                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
-                    const Spacer(),
-                    FilledButton.tonalIcon(
-                      onPressed: () { Navigator.pop(ctx); _addQuickCommand(); },
-                      icon: const Icon(Icons.add, size: 18),
-                      label: const Text('添加'),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheetState) {
+          final cmds = List<QuickCommand>.from(_quickCommands);
+          return SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Row(
+                      children: [
+                        const Text('快捷命令管理',
+                            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                        const Spacer(),
+                        FilledButton.tonalIcon(
+                          onPressed: () {
+                            _addQuickCommand().then((_) {
+                              _loadQuickCommands().then((_) => setSheetState(() {}));
+                            });
+                          },
+                          icon: const Icon(Icons.add, size: 18),
+                          label: const Text('添加'),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
-              ),
-              const Divider(),
-              Flexible(
-                child: _quickCommands.isEmpty
-                    ? const Padding(padding: EdgeInsets.all(24), child: Text('暂无快捷命令'))
-                    : ReorderableListView.builder(
-                        shrinkWrap: true,
-                        itemCount: _quickCommands.length,
-                        onReorder: (o, n) {
-                          Navigator.pop(ctx);
-                          _reorderQuickCommand(o, n);
-                        },
-                        itemBuilder: (ctx, i) {
-                          final cmd = _quickCommands[i];
-                          return ListTile(
-                            key: ValueKey(cmd.commandId ?? i),
-                            leading: const Icon(Icons.drag_handle),
-                            title: Text(cmd.label, style: const TextStyle(fontSize: 14)),
-                            subtitle: Text(cmd.command,
-                                style: const TextStyle(fontFamily: 'monospace', fontSize: 12)),
-                            trailing: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                IconButton(
-                                  icon: Icon(Icons.edit, size: 18, color: Colors.grey[600]),
-                                  onPressed: () { Navigator.pop(ctx); _editQuickCommand(cmd); },
+                  ),
+                  const Divider(),
+                  Flexible(
+                    child: cmds.isEmpty
+                        ? const Padding(padding: EdgeInsets.all(24), child: Text('暂无快捷命令'))
+                        : ReorderableListView.builder(
+                            shrinkWrap: true,
+                            itemCount: cmds.length,
+                            onReorder: (o, n) {
+                              Navigator.pop(ctx);
+                              _reorderQuickCommand(o, n);
+                            },
+                            itemBuilder: (ctx, i) {
+                              final cmd = cmds[i];
+                              return ListTile(
+                                key: ValueKey(cmd.commandId ?? i),
+                                leading: const Icon(Icons.drag_handle),
+                                title: Text(cmd.label, style: const TextStyle(fontSize: 14)),
+                                subtitle: Text(cmd.command,
+                                    style: const TextStyle(fontFamily: 'monospace', fontSize: 12)),
+                                trailing: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    IconButton(
+                                      icon: Icon(Icons.edit, size: 18, color: Colors.grey[600]),
+                                      onPressed: () {
+                                        _editQuickCommand(cmd).then((_) {
+                                          _loadQuickCommands().then((_) => setSheetState(() {}));
+                                        });
+                                      },
+                                    ),
+                                    IconButton(
+                                      icon: Icon(Icons.delete, size: 18, color: Colors.red[300]),
+                                      onPressed: () {
+                                        _deleteQuickCommand(cmd).then((_) {
+                                          _loadQuickCommands().then((_) => setSheetState(() {}));
+                                        });
+                                      },
+                                    ),
+                                  ],
                                 ),
-                                IconButton(
-                                  icon: Icon(Icons.delete, size: 18, color: Colors.red[300]),
-                                  onPressed: () { Navigator.pop(ctx); _deleteQuickCommand(cmd); },
-                                ),
-                              ],
-                            ),
-                          );
-                        },
-                      ),
+                              );
+                            },
+                          ),
+                  ),
+                ],
               ),
-            ],
-          ),
-        ),
+            ),
+          );
+        },
       ),
     );
   }

@@ -25,8 +25,7 @@ class ChatSuggestionChips extends StatelessWidget {
           top: BorderSide(color: theme.dividerColor.withOpacity(0.3)),
         ),
       ),
-      child: ListView(
-        scrollDirection: Axis.horizontal,
+      child: Row(
         children: [
           SizedBox(
             width: 36, height: 36,
@@ -40,14 +39,19 @@ class ChatSuggestionChips extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 4),
-          ...commands.map((cmd) => Padding(
-            padding: const EdgeInsets.only(right: 6),
-            child: ActionChip(
-              label: Text(cmd.label, style: const TextStyle(fontSize: 12)),
-              onPressed: () => onSelected(cmd.command),
-              visualDensity: VisualDensity.compact,
+          Expanded(
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              children: commands.map((cmd) => Padding(
+                padding: const EdgeInsets.only(right: 6),
+                child: ActionChip(
+                  label: Text(cmd.label, style: const TextStyle(fontSize: 12)),
+                  onPressed: () => onSelected(cmd.command),
+                  visualDensity: VisualDensity.compact,
+                ),
+              )).toList(),
             ),
-          )),
+          ),
         ],
       ),
     );
