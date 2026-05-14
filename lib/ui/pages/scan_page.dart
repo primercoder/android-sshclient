@@ -27,7 +27,7 @@ class _ScanPageState extends ConsumerState<ScanPage> {
 
   void _detectNetwork() async {
     final scanner = ref.read(lanScannerProvider);
-    final (cidr, _, _) = await scanner.detectCurrentNetwork();
+    final cidr = await scanner.detectCurrentCidr();
     _cidrCtrl.text = cidr;
   }
 

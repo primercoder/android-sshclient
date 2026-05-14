@@ -109,7 +109,9 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
                               final msgDao = await ref.read(messageDaoProvider.future);
                               msgDao.deleteMessagesBySession(session.sessionId);
                               sessDao.deleteSession(session.sessionId);
-                              _load();
+                              setState(() {
+                                _items.removeWhere((i) => i.session.sessionId == session.sessionId);
+                              });
                             }
                           },
                           child: Icon(Icons.delete_outline, size: 18,

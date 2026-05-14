@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:ssh_client/data/models/chat_message.dart';
 
 class ChatBubble extends StatelessWidget {
@@ -12,9 +13,9 @@ class ChatBubble extends StatelessWidget {
 
     switch (message.type) {
       case MessageType.command:
-        return _buildCommandBubble(theme);
+        return _buildCommandBubble(theme, context);
       case MessageType.output:
-        return _buildOutputBubble(theme);
+        return _buildOutputBubble(theme, context);
       case MessageType.system:
         return _buildSystemMessage(theme);
       case MessageType.fileTransfer:
@@ -22,7 +23,7 @@ class ChatBubble extends StatelessWidget {
     }
   }
 
-  Widget _buildCommandBubble(ThemeData theme) {
+  Widget _buildCommandBubble(ThemeData theme, BuildContext context) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 4),
       child: Row(
@@ -37,13 +38,32 @@ class ChatBubble extends StatelessWidget {
                   bottomRight: Radius.zero,
                 ),
               ),
-              child: Text(
-                message.content,
-                style: TextStyle(
-                  fontFamily: 'monospace',
-                  fontSize: 14,
-                  color: theme.colorScheme.onPrimaryContainer,
-                ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Text(
+                      message.content,
+                      style: TextStyle(
+                        fontFamily: 'monospace',
+                        fontSize: 14,
+                        color: theme.colorScheme.onPrimaryContainer,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  GestureDetector(
+                    onTap: () {
+                      Clipboard.setData(ClipboardData(text: message.content));
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('已复制'), duration: Duration(seconds: 1)),
+                      );
+                    },
+                    child: Icon(Icons.copy, size: 13,
+                        color: theme.colorScheme.onPrimaryContainer.withValues(alpha: 0.5)),
+                  ),
+                ],
               ),
             ),
           ),
@@ -52,7 +72,7 @@ class ChatBubble extends StatelessWidget {
     );
   }
 
-  Widget _buildOutputBubble(ThemeData theme) {
+  Widget _buildOutputBubble(ThemeData theme, BuildContext context) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 4),
       child: Row(
@@ -67,13 +87,32 @@ class ChatBubble extends StatelessWidget {
                   bottomLeft: Radius.zero,
                 ),
               ),
-              child: SelectableText(
-                message.content,
-                style: TextStyle(
-                  fontFamily: 'monospace',
-                  fontSize: 13,
-                  color: theme.colorScheme.onSurface,
-                ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: SelectableText(
+                      message.content,
+                      style: TextStyle(
+                        fontFamily: 'monospace',
+                        fontSize: 13,
+                        color: theme.colorScheme.onSurface,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  GestureDetector(
+                    onTap: () {
+                      Clipboard.setData(ClipboardData(text: message.content));
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('已复制'), duration: Duration(seconds: 1)),
+                      );
+                    },
+                    child: Icon(Icons.copy, size: 13,
+                        color: theme.colorScheme.onSurface.withValues(alpha: 0.4)),
+                  ),
+                ],
               ),
             ),
           ),

@@ -43,7 +43,7 @@ class _HomePageState extends ConsumerState<HomePage> {
 
   void _detectNetwork() async {
     final scanner = ref.read(lanScannerProvider);
-    final (cidr, _, _) = await scanner.detectCurrentNetwork();
+    final cidr = await scanner.detectCurrentCidr();
     _cidrCtrl.text = cidr;
   }
 
@@ -365,7 +365,9 @@ class _HomePageState extends ConsumerState<HomePage> {
           ),
         ],
       ),
-      body: RefreshIndicator(
+      body: GestureDetector(
+        onTap: () => FocusScope.of(context).unfocus(),
+        child: RefreshIndicator(
         onRefresh: _loadHosts,
         child: ListView(
           padding: const EdgeInsets.fromLTRB(12, 8, 12, 100),
@@ -389,9 +391,9 @@ class _HomePageState extends ConsumerState<HomePage> {
                             decoration: InputDecoration(
                               label: const Text('CIDR 子网'),
                               hintText: '192.168.1.1/24',
-                              isDense: true,
+                              isDense: false,
                               errorText: _scanError,
-                              contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
                             ),
                             onChanged: (_) { if (_scanError != null) setState(() => _scanError = null); },
                           ),
@@ -447,6 +449,7 @@ class _HomePageState extends ConsumerState<HomePage> {
             ],
           ],
         ),
+      ),
       ),
       floatingActionButton: Column(
         mainAxisSize: MainAxisSize.min,

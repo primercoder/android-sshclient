@@ -5,6 +5,9 @@ import 'dart:typed_data';
 import 'package:ssh_client/data/models/scan_result.dart';
 
 class LanScanner {
+  static const int _batchSize = 100;
+  static const int _batchDelayMs = 300;
+
   Future<List<ScanResult>> scan({
     required String cidr,
     int port = 22,
@@ -15,37 +18,46 @@ class LanScanner {
     final ips = _cidrToIps(cidr);
     if (ips.isEmpty) return results;
 
-    await Future.wait(ips.map((ip) async {
-      final stopwatch = Stopwatch()..start();
-      try {
-        final socket = await Socket.connect(
-          ip, port,
-          timeout: Duration(milliseconds: timeoutMs),
-        );
-        stopwatch.stop();
+    for (int start = 0; start < ips.length; start += _batchSize) {
+      final end = (start + _batchSize > ips.length) ? ips.length : start + _batchSize;
+      final batch = ips.sublist(start, end);
 
-        String? banner;
+      await Future.wait(batch.map((ip) async {
+        final stopwatch = Stopwatch()..start();
         try {
-          final data = await socket
-              .timeout(const Duration(milliseconds: 200))
-              .transform(utf8.decoder as StreamTransformer<Uint8List, String>)
-              .take(1)
-              .join()
-              .timeout(const Duration(milliseconds: 200));
-          banner = data;
+          final socket = await Socket.connect(
+            ip, port,
+            timeout: Duration(milliseconds: timeoutMs),
+          );
+          stopwatch.stop();
+
+          String? banner;
+          try {
+            final data = await socket
+                .timeout(const Duration(milliseconds: 200))
+                .transform(utf8.decoder as StreamTransformer<Uint8List, String>)
+                .take(1)
+                .join()
+                .timeout(const Duration(milliseconds: 200));
+            banner = data;
+          } catch (_) {}
+
+          await socket.close();
+
+          final result = ScanResult(
+            ip: ip, port: port,
+            sshBanner: banner?.trim(),
+            responseTimeMs: stopwatch.elapsedMilliseconds,
+          );
+          results.add(result);
+          onResult?.call(result);
         } catch (_) {}
+      }));
 
-        await socket.close();
-
-        final result = ScanResult(
-          ip: ip, port: port,
-          sshBanner: banner?.trim(),
-          responseTimeMs: stopwatch.elapsedMilliseconds,
-        );
-        results.add(result);
-        onResult?.call(result);
-      } catch (_) {}
-    }));
+      if (end < ips.length) {
+        await Future.delayed(const Duration(milliseconds: _batchDelayMs));
+      }
+    }
 
     return results;
   }
@@ -68,24 +80,24 @@ class LanScanner {
     final network = ipInt & mask;
     final hostCount = (1 << (32 - bits)) - 2;
 
-    if (hostCount <= 0 || hostCount > 1024) return [];
+    if (hostCount <= 0 || hostCount > 131070) return [];
 
     return List.generate(hostCount, (i) {
       final addr = network + i + 1;
       return '${(addr >> 24) & 0xFF}.${(addr >> 16) & 0xFF}.${(addr >> 8) & 0xFF}.${addr & 0xFF}';
     }).where((ip) {
-      final parts = ip.split('.').map(int.parse).toList();
-      return parts[0] >= 1 && parts[0] <= 223 &&
-          !(parts[0] == 10 && parts[3] == 1 ||
-              parts[0] == 172 && parts[1] >= 16 && parts[1] <= 31 && parts[3] == 1 ||
-              parts[0] == 192 && parts[1] == 168 && parts[3] == 1);
+      final p = ip.split('.').map(int.parse).toList();
+      return p[0] >= 1 && p[0] <= 223;
     }).toList();
   }
 
-  Future<(String cidr, String ip, int bits)> detectCurrentNetwork() async {
+  Future<String> detectCurrentCidr() async {
     try {
       final route = await _readProcNetRoute();
-      if (route != null) return route;
+      if (route != null) {
+        final (ip, bits) = route;
+        return '$ip/$bits';
+      }
     } catch (_) {}
 
     try {
@@ -93,16 +105,15 @@ class LanScanner {
       for (final interface in interfaces) {
         for (final addr in interface.addresses) {
           if (addr.type == InternetAddressType.IPv4 && !addr.isLoopback) {
-            final ip = addr.address;
-            return ('$ip/24', ip, 24);
+            return '${addr.address}/24';
           }
         }
       }
     } catch (_) {}
-    return ('192.168.1.1/24', '192.168.1.1', 24);
+    return '192.168.1.1/24';
   }
 
-  Future<(String cidr, String ip, int bits)?> _readProcNetRoute() async {
+  Future<(String ip, int bits)?> _readProcNetRoute() async {
     try {
       final file = File('/proc/net/route');
       if (!await file.exists()) return null;
@@ -127,7 +138,7 @@ class LanScanner {
         final ip = await _findInterfaceIp(iface);
         if (ip == null) continue;
 
-        return ('$ip/$maskBits', ip, maskBits);
+        return (ip, maskBits);
       }
     } catch (_) {}
     return null;

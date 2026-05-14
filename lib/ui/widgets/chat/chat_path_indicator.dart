@@ -47,12 +47,14 @@ class _ChatPathIndicatorState extends ConsumerState<ChatPathIndicator> {
             Icon(Icons.folder_open, size: 14, color: theme.colorScheme.primary),
             const SizedBox(width: 6),
             Expanded(
-              child: Text(
-                chatState.currentDirectory,
-                style: theme.textTheme.labelMedium?.copyWith(
-                  fontFamily: 'monospace', color: theme.colorScheme.onSurfaceVariant,
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Text(
+                  chatState.currentDirectory,
+                  style: theme.textTheme.labelMedium?.copyWith(
+                    fontFamily: 'monospace', color: theme.colorScheme.onSurfaceVariant,
+                  ),
                 ),
-                overflow: TextOverflow.ellipsis,
               ),
             ),
             GestureDetector(

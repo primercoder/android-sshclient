@@ -37,6 +37,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
   bool _connected = false;
   bool _error = false;
   String _errorMsg = '';
+  int _prevMsgCount = 0;
 
   String get hostId {
     if (widget.host != null) return widget.host!.hostId;
@@ -124,6 +125,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
       } catch (_) {}
       await chat.addSystemMessage('提示: 在下方输入命令，按回车发送');
     }
+    _scrollToBottom();
   }
 
   void _scrollToBottom() {
@@ -158,6 +160,19 @@ class _ChatPageState extends ConsumerState<ChatPage> {
       }
     }
     return output;
+  }
+
+  void _appendCommand(String command) {
+    final existing = _inputController.text;
+    if (existing.isNotEmpty && !existing.endsWith(' ')) {
+      _inputController.text = '$existing $command';
+    } else {
+      _inputController.text = '$existing$command';
+    }
+    _inputController.selection = TextSelection.fromPosition(
+      TextPosition(offset: _inputController.text.length),
+    );
+    _inputFocus.requestFocus();
   }
 
   Future<void> _sendCommand(String command) async {
@@ -232,6 +247,11 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     final theme = Theme.of(context);
     final chatState = ref.watch(chatProvider);
 
+    if (chatState.messages.length > _prevMsgCount) {
+      _prevMsgCount = chatState.messages.length;
+      WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
+    }
+
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, _) async {
@@ -278,7 +298,9 @@ class _ChatPageState extends ConsumerState<ChatPage> {
             if (!widget.readOnly && _connected) ChatPathIndicator(onExecute: _executeWrapped),
 
             Expanded(
-              child: chatState.messages.isEmpty && !_error
+              child: GestureDetector(
+                onTap: () => _inputFocus.unfocus(),
+                child: chatState.messages.isEmpty && !_error
                   ? Center(
                       child: Text(_connected ? '等待输入命令...' : '连接中...',
                           style: theme.textTheme.bodyLarge?.copyWith(color: Colors.grey)),
@@ -296,6 +318,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                       },
                     ),
             ),
+            ),
 
             if (_error)
               Container(
@@ -309,7 +332,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
               ),
 
             if (!widget.readOnly && _connected) ChatSuggestionChips(
-              onTap: _sendCommand,
+              onSelected: _appendCommand,
             ),
 
             if (!widget.readOnly && _connected && _showFilePanel && widget.host != null)
