@@ -76,7 +76,7 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
                     title: Text(hostLabel,
                         style: const TextStyle(fontSize: 14)),
                     subtitle: Text(
-                      '${session.hostIp} | ${item.messages.length} 条消息 | ${_formatDate(session.startTime)}',
+                      '${session.hostIp} | ${item.messages.length} 条消息 | ${_formatDateTime(session.startTime)}',
                       style: theme.textTheme.bodySmall,
                     ),
                     trailing: Row(

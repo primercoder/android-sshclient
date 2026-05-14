@@ -15,6 +15,24 @@ class QuickCommand {
     this.isBuiltin = false,
   });
 
+  QuickCommand copyWith({
+    int? commandId,
+    String? label,
+    String? command,
+    String? category,
+    int? sortOrder,
+    bool? isBuiltin,
+  }) {
+    return QuickCommand(
+      commandId: commandId ?? this.commandId,
+      label: label ?? this.label,
+      command: command ?? this.command,
+      category: category ?? this.category,
+      sortOrder: sortOrder ?? this.sortOrder,
+      isBuiltin: isBuiltin ?? this.isBuiltin,
+    );
+  }
+
   Map<String, dynamic> toJson() => {
     if (commandId != null) 'command_id': commandId,
     'label': label,

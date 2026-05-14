@@ -5,6 +5,7 @@ import 'package:ssh_client/data/database/dao/host_dao.dart';
 import 'package:ssh_client/data/database/dao/session_dao.dart';
 import 'package:ssh_client/data/database/dao/message_dao.dart';
 import 'package:ssh_client/data/database/dao/transfer_dao.dart';
+import 'package:ssh_client/data/database/dao/quick_command_dao.dart';
 import 'package:ssh_client/services/ssh/ssh_client_service.dart';
 import 'package:ssh_client/services/host_identifier.dart';
 import 'package:ssh_client/services/network/lan_scanner.dart';
@@ -32,6 +33,11 @@ final messageDaoProvider = FutureProvider<MessageDao>((ref) async {
 final transferDaoProvider = FutureProvider<TransferDao>((ref) async {
   final db = await ref.watch(databaseProvider.future);
   return TransferDao(db);
+});
+
+final quickCommandDaoProvider = FutureProvider<QuickCommandDao>((ref) async {
+  final db = await ref.watch(databaseProvider.future);
+  return QuickCommandDao(db);
 });
 
 final sshClientServiceProvider = Provider<SshClientService>((ref) {

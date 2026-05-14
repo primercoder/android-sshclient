@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:ssh_client/data/models/chat_message.dart';
 import 'package:ssh_client/data/models/host.dart';
 import 'package:ssh_client/data/models/direct_connect_info.dart';
+import 'package:ssh_client/data/models/quick_command.dart';
+import 'package:ssh_client/data/database/dao/quick_command_dao.dart';
 import 'package:ssh_client/providers/chat_provider.dart';
 import 'package:ssh_client/providers/ssh_connection_provider.dart';
 import 'package:ssh_client/providers/providers.dart';
@@ -38,6 +40,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
   bool _error = false;
   String _errorMsg = '';
   int _prevMsgCount = 0;
+  List<QuickCommand> _quickCommands = [];
 
   String get hostId {
     if (widget.host != null) return widget.host!.hostId;
@@ -69,8 +72,126 @@ class _ChatPageState extends ConsumerState<ChatPage> {
   void initState() {
     super.initState();
     if (!widget.readOnly) {
-      WidgetsBinding.instance.addPostFrameCallback((_) => _initSession());
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _initSession();
+        _loadQuickCommands();
+      });
     }
+  }
+
+  Future<void> _loadQuickCommands() async {
+    try {
+      final dao = await ref.read(quickCommandDaoProvider.future);
+      if (mounted) setState(() => _quickCommands = dao.getAll());
+    } catch (_) {}
+  }
+
+  Future<void> _addQuickCommand() async {
+    final nameCtrl = TextEditingController();
+    final cmdCtrl = TextEditingController();
+    final formKey = GlobalKey<FormState>();
+
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('添加快捷命令'),
+        content: Form(
+          key: formKey,
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            TextFormField(
+              controller: nameCtrl,
+              decoration: const InputDecoration(
+                labelText: '显示名称', hintText: '例如: myls',
+                isDense: false,
+              ),
+              validator: (v) => (v == null || v.trim().isEmpty) ? '请输入名称' : null,
+            ),
+            const SizedBox(height: 8),
+            TextFormField(
+              controller: cmdCtrl,
+              decoration: const InputDecoration(
+                labelText: '命令', hintText: '例如: ls -la',
+                isDense: false,
+              ),
+              validator: (v) => (v == null || v.trim().isEmpty) ? '请输入命令' : null,
+            ),
+          ]),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+          FilledButton(onPressed: () {
+            if (!(formKey.currentState?.validate() ?? false)) return;
+            Navigator.pop(ctx, true);
+          }, child: const Text('添加')),
+        ],
+      ),
+    );
+    if (result != true || !mounted) return;
+
+    try {
+      final dao = await ref.read(quickCommandDaoProvider.future);
+      dao.insert(QuickCommand(
+        label: nameCtrl.text.trim(),
+        command: cmdCtrl.text.trim(),
+      ));
+      _loadQuickCommands();
+    } catch (_) {}
+  }
+
+  void _editQuickCommand(QuickCommand cmd) {
+    final nameCtrl = TextEditingController(text: cmd.label);
+    final cmdCtrl = TextEditingController(text: cmd.command);
+    final formKey = GlobalKey<FormState>();
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('编辑快捷命令'),
+        content: Form(
+          key: formKey,
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            TextFormField(
+              controller: nameCtrl,
+              decoration: const InputDecoration(
+                labelText: '显示名称', hintText: '例如: myls',
+                isDense: false,
+              ),
+              validator: (v) => (v == null || v.trim().isEmpty) ? '请输入名称' : null,
+            ),
+            const SizedBox(height: 8),
+            TextFormField(
+              controller: cmdCtrl,
+              decoration: const InputDecoration(
+                labelText: '命令', hintText: '例如: ls -la',
+                isDense: false,
+              ),
+              validator: (v) => (v == null || v.trim().isEmpty) ? '请输入命令' : null,
+            ),
+          ]),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+          FilledButton(onPressed: () async {
+            if (!(formKey.currentState?.validate() ?? false)) return;
+            final dao = await ref.read(quickCommandDaoProvider.future);
+            dao.update(cmd.copyWith(
+              label: nameCtrl.text.trim(),
+              command: cmdCtrl.text.trim(),
+            ));
+            Navigator.pop(ctx);
+            _loadQuickCommands();
+          }, child: const Text('保存')),
+        ],
+      ),
+    );
+  }
+
+  void _deleteQuickCommand(QuickCommand cmd) async {
+    try {
+      final dao = await ref.read(quickCommandDaoProvider.future);
+      dao.delete(cmd.commandId!);
+      _loadQuickCommands();
+    } catch (_) {}
   }
 
   String get _hostName {
@@ -332,7 +453,11 @@ class _ChatPageState extends ConsumerState<ChatPage> {
               ),
 
             if (!widget.readOnly && _connected) ChatSuggestionChips(
+              commands: _quickCommands,
               onSelected: _appendCommand,
+              onAdd: _addQuickCommand,
+              onEdit: _editQuickCommand,
+              onDelete: _deleteQuickCommand,
             ),
 
             if (!widget.readOnly && _connected && _showFilePanel && widget.host != null)
