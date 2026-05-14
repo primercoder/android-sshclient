@@ -187,11 +187,12 @@ class _ChatPageState extends ConsumerState<ChatPage> {
       if (output.isEmpty) return;
 
       final lines = output.split('\n');
-
-      // Everything except the last line (the pwd result) is the command output
+      
       if (lines.length > 1) {
         final cmdOut = lines.sublist(0, lines.length - 1).join('\n');
         await chat.addOutput(cmdOut);
+      } else if (output.isNotEmpty && !output.startsWith('/')) {
+        await chat.addOutput(output);
       }
     } catch (e) {
       await chat.addSystemMessage('命令执行错误: $e');

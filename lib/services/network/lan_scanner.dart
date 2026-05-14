@@ -34,7 +34,11 @@ class LanScanner {
     for (int start = 0; start < ips.length; start += _batchSize) {
       if (abort?.isStopped == true) break;
       while (abort?.isPaused == true) {
-        await abort!.pauseSignal.timeout(const Duration(seconds: 30));
+        try {
+          await abort!.pauseSignal.timeout(const Duration(seconds: 30));
+        } on TimeoutException {
+          // still paused, re-check
+        }
       }
       if (abort?.isStopped == true) break;
       final end = (start + _batchSize > ips.length) ? ips.length : start + _batchSize;
