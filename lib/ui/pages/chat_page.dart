@@ -247,8 +247,10 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                             shrinkWrap: true,
                             itemCount: cmds.length,
                             onReorder: (o, n) {
-                              Navigator.pop(ctx);
-                              _reorderQuickCommand(o, n);
+                              if (n > o) n--;
+                              final cmd = cmds.removeAt(o);
+                              cmds.insert(n, cmd);
+                              _reorderQuickCommand(o, n).then((_) => setSheetState(() {}));
                             },
                             itemBuilder: (ctx, i) {
                               final cmd = cmds[i];
