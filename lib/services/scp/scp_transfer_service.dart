@@ -60,22 +60,17 @@ class ScpTransferService {
     if (chunk.isEmpty) throw Exception('Empty SCP response');
     if (chunk[0] == 0) return;
     if (chunk[0] == 1) {
-      final rest = await _readAll(iter);
-      final err = '${utf8.decode(chunk.sublist(1))}${utf8.decode(rest)}'.trim();
+      // Collect the rest of the error message from the stream
+      String err;
+      try {
+        final rest = await _readAll(iter, timeout: const Duration(seconds: 3));
+        err = '${utf8.decode(chunk.sublist(1))}${utf8.decode(rest)}'.trim();
+      } catch (_) {
+        err = utf8.decode(chunk.sublist(1)).trim();
+      }
       throw Exception(err.isNotEmpty ? err : 'SCP error');
     }
     throw Exception('Unexpected SCP response byte: ${chunk[0]}');
-  }
-
-  /// Collect all stderr output from [session] into a string.
-  Future<String> _collectStderr(SSHSession session) async {
-    final buf = <int>[];
-    try {
-      await for (final chunk in session.stderr) {
-        buf.addAll(chunk);
-      }
-    } catch (_) {}
-    return utf8.decode(buf).trim();
   }
 
   // --------------------------------------------------------------------------
@@ -86,8 +81,8 @@ class ScpTransferService {
   //   2. us     → C0644 <size> <name>\n
   //   3. remote → \0            (ack)  OR  \001 <err>\n  (error)
   //   4. us     → <file data>
-  //   5. us     → \0            (eof)
-  //   6. remote → \0            (done) & closes
+  //   5. us     → close(stdin)  (EOF — remote read() returns 0, sink exits)
+  //   6. session.done
 
   Future<TransferTask> uploadFile({
     required String localPath,
@@ -125,7 +120,7 @@ class ScpTransferService {
         _write(session, chunk);
         sent += chunk.length;
       }
-      _write(session, [0]);                                       // 5
+      await session.stdin.close();                                // 5
       await session.done;                                         // 6
 
       return task.copyWith(
@@ -134,10 +129,9 @@ class ScpTransferService {
         completedAt: DateTime.now(),
       );
     } catch (e) {
-      final stderr = await _collectStderr(session);
       return task.copyWith(
         status: TransferStatus.failed,
-        errorMessage: stderr.isNotEmpty ? stderr : e.toString(),
+        errorMessage: e.toString(),
       );
     }
   }
@@ -147,12 +141,12 @@ class ScpTransferService {
   // --------------------------------------------------------------------------
   //
   //   1. remote → C<perms> <size> <name>\n   (header)
-  //               OR  \001 <err>\n            (error, file not found etc.)
+  //               OR  \001 <err>\n            (error)
   //   2. us     → \0                          (header ack)
   //   3. remote → <file data>                (<size> bytes)
-  //   4. remote → \0                          (done marker via transmit())
+  //   4. remote → \0                          (done via transmit())
   //   5. us     → \0                          (final ack)
-  //   6. remote exits, channel closes
+  //   6. remote exits, session.done
 
   Future<TransferTask> downloadFile({
     required String remotePath,
@@ -178,15 +172,18 @@ class ScpTransferService {
     final iter = StreamIterator(session.stdout);
 
     try {
-      // 1. Read the first chunk — check for error marker (0x01)
+      // 1. First chunk — check for error marker (0x01) or header (C...)
       final first = await _nextChunk(iter);
       if (first.isNotEmpty && first[0] == 1) {
-        // Error: 0x01 + error_message + \n
-        final rest = await _readAll(iter);
-        final err = '${utf8.decode(first.sublist(1))}${utf8.decode(rest)}'.trim();
+        String err;
+        try {
+          final rest = await _readAll(iter, timeout: const Duration(seconds: 3));
+          err = '${utf8.decode(first.sublist(1))}${utf8.decode(rest)}'.trim();
+        } catch (_) {
+          err = utf8.decode(first.sublist(1)).trim();
+        }
         throw Exception(err.isNotEmpty ? err : 'File not found');
       }
-      // Otherwise it's the header starting with 'C'
       final header = await _readLine(iter, firstChunk: first);
       final parts = header.split(' ');
       if (parts.length < 3) {
@@ -210,7 +207,7 @@ class ScpTransferService {
       await sink.flush();
       await sink.close();
 
-      // 5. Final ack — remote reads \0 and exits
+      // 5. Final ack — remote waits for \0 then exits
       _write(session, [0]);
       await session.done;
 
@@ -220,10 +217,9 @@ class ScpTransferService {
         completedAt: DateTime.now(),
       );
     } catch (e) {
-      final stderr = await _collectStderr(session);
       return task.copyWith(
         status: TransferStatus.failed,
-        errorMessage: stderr.isNotEmpty ? stderr : e.toString(),
+        errorMessage: e.toString(),
       );
     }
   }
