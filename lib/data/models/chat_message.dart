@@ -19,6 +19,26 @@ class ChatMessage {
     this.durationMs,
   });
 
+  ChatMessage copyWith({
+    String? messageId,
+    String? sessionId,
+    MessageType? type,
+    String? content,
+    String? workingDirectory,
+    DateTime? timestamp,
+    int? durationMs,
+  }) {
+    return ChatMessage(
+      messageId: messageId ?? this.messageId,
+      sessionId: sessionId ?? this.sessionId,
+      type: type ?? this.type,
+      content: content ?? this.content,
+      workingDirectory: workingDirectory ?? this.workingDirectory,
+      timestamp: timestamp ?? this.timestamp,
+      durationMs: durationMs ?? this.durationMs,
+    );
+  }
+
   Map<String, dynamic> toJson() => {
     'message_id': messageId,
     'session_id': sessionId,

@@ -96,7 +96,7 @@ class ChatFilePanel extends ConsumerWidget {
     }
 
     final chat = ref.read(chatProvider.notifier);
-    await chat.addCommand('⬆️ 正在上传 ${file.name} → $remotePath ...');
+    final msgId = await chat.addTransferMessage('⏳⬆ ${file.name} → $remotePath');
 
     try {
       final transferService = ScpTransferService(sshService.client!);
@@ -108,13 +108,13 @@ class ChatFilePanel extends ConsumerWidget {
       );
       await ref.read(transferProvider.notifier).addTransfer(task);
       if (task.status == TransferStatus.completed) {
-        await chat.addCommand('📄 上传完成: ${file.name} → $remotePath');
+        await chat.updateMessage(msgId, '✅⬆ ${file.name} → $remotePath');
       } else {
         final err = task.errorMessage ?? '未知错误';
-        await chat.addCommand('⚠️ 上传失败: $err');
+        await chat.updateMessage(msgId, '⚠⬆ ${file.name} → $remotePath: $err');
       }
     } catch (e) {
-      await chat.addCommand('⚠️ 上传失败: $e');
+      await chat.updateMessage(msgId, '⚠⬆ ${file.name} → $remotePath: $e');
     }
   }
 
@@ -205,7 +205,7 @@ class ChatFilePanel extends ConsumerWidget {
     }
 
     final chat = ref.read(chatProvider.notifier);
-    await chat.addOutput('⬇️ 正在下载 $filename ← $remotePath ...');
+    final msgId = await chat.addTransferMessage('⏳⬇ $filename ← $remotePath');
 
     try {
       final transferService = ScpTransferService(sshService.client!);
@@ -218,13 +218,13 @@ class ChatFilePanel extends ConsumerWidget {
 
       await ref.read(transferProvider.notifier).addTransfer(task);
       if (task.status == TransferStatus.completed) {
-        await chat.addOutput('📥 下载完成: $filename → $localPath');
+        await chat.updateMessage(msgId, '✅⬇ $filename → $localPath');
       } else {
         final err = task.errorMessage ?? '未知错误';
-        await chat.addOutput('⚠️ 下载失败: $err');
+        await chat.updateMessage(msgId, '⚠⬇ $filename ← $remotePath: $err');
       }
     } catch (e) {
-      await chat.addOutput('⚠️ 下载失败: $e');
+      await chat.updateMessage(msgId, '⚠⬇ $filename ← $remotePath: $e');
     }
   }
 }

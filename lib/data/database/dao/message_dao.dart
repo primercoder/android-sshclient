@@ -36,6 +36,13 @@ class MessageDao {
     }
   }
 
+  void updateMessageContent(String messageId, String content) {
+    _db.execute(
+      'UPDATE chat_messages SET content = ? WHERE message_id = ?',
+      [content, messageId],
+    );
+  }
+
   void deleteMessagesBySession(String sessionId) {
     _db.execute(
       'DELETE FROM chat_messages WHERE session_id = ?',
