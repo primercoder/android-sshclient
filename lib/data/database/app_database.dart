@@ -107,7 +107,6 @@ class AppDatabase {
         command_id         INTEGER PRIMARY KEY AUTOINCREMENT,
         label              TEXT NOT NULL,
         command            TEXT NOT NULL,
-        category           TEXT NOT NULL DEFAULT 'custom',
         sort_order         INTEGER NOT NULL DEFAULT 0,
         is_builtin         INTEGER NOT NULL DEFAULT 0
       )
@@ -128,20 +127,20 @@ class AppDatabase {
     final count = _db.select('SELECT COUNT(*) FROM quick_commands').first;
     if (count.values.first == 0) {
       final commands = [
-        ('ls -la', '文件操作', 'ls', 1),
-        ('df -h', '系统监控', 'df -h', 2),
-        ('ps aux', '进程管理', 'ps aux', 3),
-        ('free -h', '系统监控', 'free -h', 4),
-        ('netstat -tlnp', '网络工具', 'netstat -tlnp', 5),
-        ('ip a', '网络工具', 'ip a', 6),
-        ('uptime', '系统监控', 'uptime', 7),
-        ('pwd', '文件操作', 'pwd', 8),
+        ('ls', 'ls -la', 1),
+        ('df', 'df -h', 2),
+        ('ps', 'ps aux', 3),
+        ('free', 'free -h', 4),
+        ('netstat', 'netstat -tlnp', 5),
+        ('ip', 'ip a', 6),
+        ('uptime', 'uptime', 7),
+        ('pwd', 'pwd', 8),
       ];
 
       for (final cmd in commands) {
         _db.execute(
-          'INSERT INTO quick_commands (label, command, category, sort_order, is_builtin) VALUES (?, ?, ?, ?, 0)',
-          [cmd.$1, cmd.$2, cmd.$3, cmd.$4],
+          'INSERT INTO quick_commands (label, command, sort_order, is_builtin) VALUES (?, ?, ?, 0)',
+          [cmd.$1, cmd.$2, cmd.$3],
         );
       }
     }

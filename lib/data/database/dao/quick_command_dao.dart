@@ -15,12 +15,11 @@ class QuickCommandDao {
 
   void insert(QuickCommand cmd) {
     _db.execute('''
-      INSERT INTO quick_commands (label, command, category, sort_order, is_builtin)
-      VALUES (?, ?, ?, ?, ?)
+      INSERT INTO quick_commands (label, command, sort_order, is_builtin)
+      VALUES (?, ?, ?, ?)
     ''', [
       cmd.label,
       cmd.command,
-      cmd.category,
       cmd.sortOrder,
       cmd.isBuiltin ? 1 : 0,
     ]);
@@ -28,12 +27,11 @@ class QuickCommandDao {
 
   void update(QuickCommand cmd) {
     _db.execute('''
-      UPDATE quick_commands SET label = ?, command = ?, category = ?, sort_order = ?
+      UPDATE quick_commands SET label = ?, command = ?, sort_order = ?
       WHERE command_id = ?
     ''', [
       cmd.label,
       cmd.command,
-      cmd.category,
       cmd.sortOrder,
       cmd.commandId,
     ]);
@@ -50,7 +48,6 @@ class QuickCommandDao {
     commandId: row['command_id'] as int,
     label: row['label'] as String,
     command: row['command'] as String,
-    category: row['category'] as String? ?? 'custom',
     sortOrder: row['sort_order'] as int? ?? 0,
     isBuiltin: (row['is_builtin'] as int? ?? 0) == 1,
   );
