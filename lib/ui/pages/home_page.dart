@@ -25,6 +25,7 @@ class _HomePageState extends ConsumerState<HomePage> {
   List<ScanResult> _scanResults = [];
   bool _isScanning = false;
   late TextEditingController _cidrCtrl;
+  final FocusNode _cidrFocus = FocusNode();
   String? _scanError;
   ScanAbort? _scanAbort;
 
@@ -143,6 +144,7 @@ class _HomePageState extends ConsumerState<HomePage> {
     } else {
       showDialog(
         context: context,
+        barrierDismissible: false,
         builder: (ctx) => AlertDialog(
           title: const Text('连接失败'),
           content: Text(notifier.errorMessage ?? '未知错误'),
@@ -155,6 +157,7 @@ class _HomePageState extends ConsumerState<HomePage> {
   void _disconnectHost() {
     showDialog(
       context: context,
+      barrierDismissible: false,
       builder: (ctx) => AlertDialog(
         title: const Text('断开连接'),
         content: const Text('确定断开当前 SSH 连接？'),
@@ -176,6 +179,7 @@ class _HomePageState extends ConsumerState<HomePage> {
   }
 
   void _showEditDialog(Host host) {
+    _cidrFocus.unfocus();
     final nameCtrl = TextEditingController(text: host.displayName);
     final ipCtrl = TextEditingController(text: host.currentIp);
     final portCtrl = TextEditingController(text: host.port.toString());
@@ -185,6 +189,7 @@ class _HomePageState extends ConsumerState<HomePage> {
 
     showDialog(
       context: context,
+      barrierDismissible: false,
       builder: (ctx) => AlertDialog(
         title: const Text('编辑主机'),
         content: SingleChildScrollView(
@@ -237,11 +242,13 @@ class _HomePageState extends ConsumerState<HomePage> {
   }
 
   Future<void> _confirmDelete(Host host) async {
+    _cidrFocus.unfocus();
     final hasActive = ref.read(chatProvider.notifier).hasActiveSession(host.hostId);
 
     if (!mounted) return;
     final action = await showDialog<String>(
       context: context,
+      barrierDismissible: false,
       builder: (ctx) => AlertDialog(
         title: const Text('删除主机'),
         content: Text(hasActive
@@ -286,6 +293,7 @@ class _HomePageState extends ConsumerState<HomePage> {
   }
 
   void _showScanAddDialog(ScanResult scanResult) {
+    _cidrFocus.unfocus();
     final nameCtrl = TextEditingController(text: scanResult.ip);
     final userCtrl = TextEditingController(text: 'root');
     final passCtrl = TextEditingController();
@@ -293,6 +301,7 @@ class _HomePageState extends ConsumerState<HomePage> {
 
     showDialog(
       context: context,
+      barrierDismissible: false,
       builder: (ctx) => AlertDialog(
         title: Text('添加 ${scanResult.ip}:${scanResult.port}'),
         content: SingleChildScrollView(
@@ -332,6 +341,7 @@ class _HomePageState extends ConsumerState<HomePage> {
   @override
   void dispose() {
     _cidrCtrl.dispose();
+    _cidrFocus.dispose();
     super.dispose();
   }
 
@@ -400,6 +410,7 @@ class _HomePageState extends ConsumerState<HomePage> {
                           flex: 3,
                           child: TextField(
                             controller: _cidrCtrl,
+                            focusNode: _cidrFocus,
                             decoration: InputDecoration(
                               label: const Text('CIDR 子网'),
                               hintText: '192.168.1.1/24',
@@ -500,6 +511,7 @@ class _HomePageState extends ConsumerState<HomePage> {
   }
 
   void _showAddFavoriteDialog() {
+    _cidrFocus.unfocus();
     final ipCtrl = TextEditingController();
     final portCtrl = TextEditingController(text: '22');
     final userCtrl = TextEditingController(text: 'root');
@@ -509,6 +521,7 @@ class _HomePageState extends ConsumerState<HomePage> {
 
     showDialog(
       context: context,
+      barrierDismissible: false,
       builder: (ctx) => AlertDialog(
         title: const Text('添加收藏主机'),
         content: SingleChildScrollView(
@@ -560,6 +573,7 @@ class _HomePageState extends ConsumerState<HomePage> {
   }
 
   void _showDirectConnectDialog() {
+    _cidrFocus.unfocus();
     final ipCtrl = TextEditingController();
     final portCtrl = TextEditingController(text: '22');
     final userCtrl = TextEditingController(text: 'root');
@@ -569,6 +583,7 @@ class _HomePageState extends ConsumerState<HomePage> {
 
     showDialog(
       context: context,
+      barrierDismissible: false,
       builder: (ctx) => AlertDialog(
         title: const Text('直连主机'),
         content: SingleChildScrollView(
