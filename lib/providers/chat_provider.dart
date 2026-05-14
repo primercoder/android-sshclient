@@ -186,35 +186,6 @@ class ChatNotifier extends StateNotifier<ChatState> {
     state = state.copyWith(messages: [...state.messages, msg]);
   }
 
-  /// Update the content of an existing message in-place (DB + state).
-  Future<void> updateMessage(String messageId, String newContent) async {
-    final msgDao = await _messageDaoAsync;
-    msgDao.updateMessageContent(messageId, newContent);
-    state = state.copyWith(
-      messages: state.messages.map((m) =>
-        m.messageId == messageId ? m.copyWith(content: newContent) : m,
-      ).toList(),
-    );
-  }
-
-  /// Add a fileTransfer-type message and return its messageId so the
-  /// caller can update it later with [updateMessage].
-  Future<String> addTransferMessage(String content) async {
-    if (state.currentSession == null) return '';
-    final msgDao = await _messageDaoAsync;
-    final msgId = Session.generateId('xfer', DateTime.now().millisecondsSinceEpoch.toString());
-    final msg = ChatMessage(
-      messageId: msgId,
-      sessionId: state.currentSession!.sessionId,
-      type: MessageType.fileTransfer,
-      content: content,
-      timestamp: DateTime.now(),
-    );
-    msgDao.insertMessage(msg);
-    state = state.copyWith(messages: [...state.messages, msg]);
-    return msgId;
-  }
-
   void setInputText(String text) {
     state = state.copyWith(inputText: text);
   }

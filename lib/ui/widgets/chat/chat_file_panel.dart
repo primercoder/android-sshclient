@@ -96,7 +96,7 @@ class ChatFilePanel extends ConsumerWidget {
     }
 
     final chat = ref.read(chatProvider.notifier);
-    final msgId = await chat.addTransferMessage('⏳⬆ ${file.name} → $remotePath');
+    await chat.addSystemMessage('正在上传 ${file.name}');
 
     try {
       final transferService = ScpTransferService(sshService.client!);
@@ -108,13 +108,13 @@ class ChatFilePanel extends ConsumerWidget {
       );
       await ref.read(transferProvider.notifier).addTransfer(task);
       if (task.status == TransferStatus.completed) {
-        await chat.updateMessage(msgId, '✅⬆ ${file.name} → $remotePath');
+        await chat.addCommand('✅⬆ ${file.name} → $remotePath');
       } else {
         final err = task.errorMessage ?? '未知错误';
-        await chat.updateMessage(msgId, '⚠⬆ ${file.name} → $remotePath: $err');
+        await chat.addCommand('⚠⬆ ${file.name} → $remotePath: $err');
       }
     } catch (e) {
-      await chat.updateMessage(msgId, '⚠⬆ ${file.name} → $remotePath: $e');
+      await chat.addCommand('⚠⬆ ${file.name} → $remotePath: $e');
     }
   }
 
@@ -205,7 +205,7 @@ class ChatFilePanel extends ConsumerWidget {
     }
 
     final chat = ref.read(chatProvider.notifier);
-    final msgId = await chat.addTransferMessage('⏳⬇ $filename ← $remotePath');
+    await chat.addSystemMessage('正在下载 $filename');
 
     try {
       final transferService = ScpTransferService(sshService.client!);
@@ -218,13 +218,13 @@ class ChatFilePanel extends ConsumerWidget {
 
       await ref.read(transferProvider.notifier).addTransfer(task);
       if (task.status == TransferStatus.completed) {
-        await chat.updateMessage(msgId, '✅⬇ $filename → $localPath');
+        await chat.addOutput('✅⬇ $filename → $localPath');
       } else {
         final err = task.errorMessage ?? '未知错误';
-        await chat.updateMessage(msgId, '⚠⬇ $filename ← $remotePath: $err');
+        await chat.addOutput('⚠⬇ $filename ← $remotePath: $err');
       }
     } catch (e) {
-      await chat.updateMessage(msgId, '⚠⬇ $filename ← $remotePath: $e');
+      await chat.addOutput('⚠⬇ $filename ← $remotePath: $e');
     }
   }
 }
