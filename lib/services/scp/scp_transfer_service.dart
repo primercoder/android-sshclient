@@ -33,18 +33,6 @@ class ScpTransferService {
 
   /// Accumulate chunks until a newline (0x0a) and return the line as
   /// UTF-8 text (newline excluded).
-  Future<String> _readLine(StreamIterator<List<int>> iter,
-      {List<int>? firstChunk,
-      Duration timeout = const Duration(seconds: 15)}) async {
-    final buf = <int>[];
-    if (firstChunk != null) buf.addAll(firstChunk);
-    while (true) {
-      final nl = buf.indexOf(0x0a);
-      if (nl >= 0) return utf8.decode(buf.sublist(0, nl));
-      final chunk = await _nextChunk(iter, timeout: timeout);
-      buf.addAll(chunk);
-    }
-  }
 
   /// Read all remaining bytes from [iter] (up to [limit]).
   Future<List<int>> _readAll(StreamIterator<List<int>> iter,
@@ -148,16 +136,11 @@ class ScpTransferService {
   }
 
   // --------------------------------------------------------------------------
-  // Download  —  remote runs `scp -f <file>` (sender)
+  // Download  —  read file via SSH exec cat (avoids SCP protocol deadlocks)
   // --------------------------------------------------------------------------
   //
-  //   1. remote → C<perms> <size> <name>\n   (header)
-  //               OR  \001 <err>\n            (error)
-  //   2. us     → \0                          (header ack)
-  //   3. remote → <file data>                (<size> bytes)
-  //   4. remote → \0                          (done via transmit())
-  //   5. us     → \0                          (final ack)
-  //   6. remote exits, session.done
+  // Runs `cat "$remotePath"` on the remote and captures stdout as raw bytes.
+  // Simpler than scp -f: no bidirectional ack protocol, no risk of deadlock.
 
   Future<TransferTask> downloadFile({
     required String remotePath,
@@ -179,55 +162,24 @@ class ScpTransferService {
       startedAt: DateTime.now(),
     );
 
-    final session = await _client.execute('scp -f "$remotePath"');
-    final iter = StreamIterator(session.stdout);
+    final session = await _client.execute('cat "$remotePath"');
+    final sink = localFile.openWrite();
+    int received = 0;
 
     try {
-      // 1. First chunk — check for error marker (0x01) or header (C...)
-      List<int> first;
-      try {
-        first = await _nextChunk(iter);
-      } catch (_) {
-        // stdout produced nothing — collect stderr for the real error
-        final stderr = await _stderrSnapshot(session);
-        throw Exception(stderr.isNotEmpty ? stderr : 'SCP process produced no output');
-      }
-      if (first.isNotEmpty && first[0] == 1) {
-        String err;
-        try {
-          final rest = await _readAll(iter, timeout: const Duration(seconds: 3));
-          err = '${utf8.decode(first.sublist(1))}${utf8.decode(rest)}'.trim();
-        } catch (_) {
-          err = utf8.decode(first.sublist(1)).trim();
-        }
-        throw Exception(err.isNotEmpty ? err : 'File not found');
-      }
-      final header = await _readLine(iter, firstChunk: first);
-      final parts = header.split(' ');
-      if (parts.length < 3) {
-        throw Exception('Unexpected SCP header: $header');
-      }
-      final fileSize = int.tryParse(parts[1]) ?? 0;
-
-      // 2. Acknowledge header
-      _write(session, [0]);
-
-      // 3+4. Read file data (fileSize bytes), ignore trailing \0
-      final sink = localFile.openWrite();
-      int received = 0;
-      while (received < fileSize && await iter.moveNext()) {
-        final chunk = iter.current;
-        final need = fileSize - received;
-        final toWrite = chunk.length > need ? chunk.sublist(0, need) : chunk;
-        sink.add(toWrite);
-        received += toWrite.length;
+      await for (final chunk in session.stdout) {
+        sink.add(chunk);
+        received += chunk.length;
       }
       await sink.flush();
       await sink.close();
-
-      // 5. Final ack — remote waits for \0 then exits
-      _write(session, [0]);
       await session.done;
+
+      if (received == 0) {
+        // No data — check stderr for the real error
+        final stderr = await _stderrSnapshot(session);
+        throw Exception(stderr.isNotEmpty ? stderr : 'File not found or empty');
+      }
 
       return task.copyWith(
         status: TransferStatus.completed,
@@ -235,22 +187,11 @@ class ScpTransferService {
         completedAt: DateTime.now(),
       );
     } catch (e) {
-      // If we already sent the header ack, the remote is waiting for our
-      // final \0.  Send \x01 to abort — read_response() treats any
-      // non-zero byte as an error and the remote exits.
-      try { _write(session, [1]); } catch (_) {}
-      try { await session.done.timeout(const Duration(seconds: 5)); } catch (_) {}
-
-      String detail;
-      try {
-        final stderr = await _stderrSnapshot(session);
-        detail = stderr.isNotEmpty ? stderr : e.toString();
-      } catch (_) {
-        detail = e.toString();
-      }
+      final stderr = await _stderrSnapshot(session);
+      final detail = stderr.isNotEmpty ? stderr : e.toString();
       return task.copyWith(
         status: TransferStatus.failed,
-        errorMessage: '$filename ← ${task.remotePath}: $detail',
+        errorMessage: '$filename ← $remotePath: $detail',
       );
     }
   }
