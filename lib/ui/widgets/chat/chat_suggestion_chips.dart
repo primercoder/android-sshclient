@@ -32,13 +32,16 @@ class ChatSuggestionChips extends StatelessWidget {
       child: ListView(
         scrollDirection: Axis.horizontal,
         children: [
-          ActionChip(
-            avatar: Icon(Icons.add, size: 16,
-                color: theme.colorScheme.primary),
-            label: const Text(''),
-            onPressed: onAdd,
-            visualDensity: VisualDensity.compact,
-            padding: const EdgeInsets.symmetric(horizontal: 4),
+          SizedBox(
+            width: 36, height: 36,
+            child: ActionChip(
+              avatar: Icon(Icons.add, size: 18,
+                  color: theme.colorScheme.primary),
+              label: const SizedBox.shrink(),
+              onPressed: onAdd,
+              padding: EdgeInsets.zero,
+              visualDensity: VisualDensity.compact,
+            ),
           ),
           const SizedBox(width: 4),
           ...commands.map((cmd) => Padding(

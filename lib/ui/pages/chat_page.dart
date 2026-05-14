@@ -101,7 +101,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
             TextFormField(
               controller: nameCtrl,
               decoration: const InputDecoration(
-                labelText: '显示名称', hintText: '例如: myls',
+                labelText: '显示名称', hintText: '例如: ls',
                 isDense: false,
               ),
               validator: (v) => (v == null || v.trim().isEmpty) ? '请输入名称' : null,
@@ -153,7 +153,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
             TextFormField(
               controller: nameCtrl,
               decoration: const InputDecoration(
-                labelText: '显示名称', hintText: '例如: myls',
+                labelText: '显示名称', hintText: '例如: ls',
                 isDense: false,
               ),
               validator: (v) => (v == null || v.trim().isEmpty) ? '请输入名称' : null,
