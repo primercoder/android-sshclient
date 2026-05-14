@@ -4,6 +4,18 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'package:ssh_client/data/models/scan_result.dart';
 
+class ScanAbort {
+  bool _stopped = false;
+  Completer<void> _pauseCompleter = Completer<void>()..complete();
+
+  void stop() { _stopped = true; resume(); }
+  void pause() { if (!_pauseCompleter.isCompleted) return; _pauseCompleter = Completer<void>(); }
+  void resume() { if (_pauseCompleter.isCompleted) return; _pauseCompleter.complete(); }
+  bool get isStopped => _stopped;
+  bool get isPaused => !_pauseCompleter.isCompleted;
+  Future<void> get pauseSignal => _pauseCompleter.future;
+}
+
 class LanScanner {
   static const int _batchSize = 100;
   static const int _batchDelayMs = 3000;
@@ -13,12 +25,18 @@ class LanScanner {
     int port = 22,
     int timeoutMs = 1000,
     void Function(ScanResult result)? onResult,
+    ScanAbort? abort,
   }) async {
     final results = <ScanResult>[];
     final ips = _cidrToIps(cidr);
     if (ips.isEmpty) return results;
 
     for (int start = 0; start < ips.length; start += _batchSize) {
+      if (abort?.isStopped == true) break;
+      while (abort?.isPaused == true) {
+        await abort!.pauseSignal.timeout(const Duration(seconds: 30));
+      }
+      if (abort?.isStopped == true) break;
       final end = (start + _batchSize > ips.length) ? ips.length : start + _batchSize;
       final batch = ips.sublist(start, end);
 
