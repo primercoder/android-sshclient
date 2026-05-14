@@ -1,6 +1,8 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:ssh_client/data/models/host.dart';
 import 'package:ssh_client/data/models/transfer_task.dart';
 import 'package:ssh_client/services/scp/scp_transfer_service.dart';
@@ -184,17 +186,33 @@ class ChatFilePanel extends ConsumerWidget {
       );
     }
 
-    final savePath = await FilePicker.platform.saveFile(
-      dialogTitle: '保存到 (默认: $downloadDir)',
-      fileName: filename,
-    );
-    if (savePath == null || !context.mounted) return;
+    // Determine a writable local path:
+    //   1. Try the user-configured download directory
+    //   2. Fall back to the app's documents directory
+    String localPath;
+    try {
+      localPath = '${downloadDir.endsWith('/') ? downloadDir : '$downloadDir/'}$filename';
+      // Verify the parent directory is writable
+      final dir = Directory(localPath.substring(0, localPath.lastIndexOf('/')));
+      if (!await dir.exists()) {
+        await dir.create(recursive: true);
+      }
+      // Quick writeability test
+      final testFile = File(localPath);
+      await testFile.writeAsBytes([]);
+      await testFile.delete();
+    } catch (_) {
+      // Configured directory not writable (scoped storage) — use app private dir
+      final appDir = await getApplicationDocumentsDirectory();
+      localPath = '${appDir.path}/$filename';
+    }
 
+    // Confirm with user
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('下载确认'),
-        content: Text('下载 $remotePath\n到 $savePath'),
+        content: Text('下载 $remotePath\n到 $localPath'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
           FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('下载')),
@@ -219,7 +237,7 @@ class ChatFilePanel extends ConsumerWidget {
       final transferService = ScpTransferService(sshService.client!);
       final task = await transferService.downloadFile(
         remotePath: remotePath,
-        localPath: savePath,
+        localPath: localPath,
         sessionId: sessionId,
         transferId: const Uuid().v4(),
       );
@@ -227,7 +245,7 @@ class ChatFilePanel extends ConsumerWidget {
       await ref.read(transferProvider.notifier).addTransfer(task);
       final chat = ref.read(chatProvider.notifier);
       if (task.status == TransferStatus.completed) {
-        final msg = '下载完成: $filename → $savePath';
+        final msg = '下载完成: $filename → $localPath';
         await chat.addSystemMessage('📥 $msg');
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(

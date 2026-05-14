@@ -235,8 +235,19 @@ class ScpTransferService {
         completedAt: DateTime.now(),
       );
     } catch (e) {
-      final stderr = await _stderrSnapshot(session);
-      final detail = stderr.isNotEmpty ? stderr : e.toString();
+      // If we already sent the header ack, the remote is waiting for our
+      // final \0.  Send \x01 to abort — read_response() treats any
+      // non-zero byte as an error and the remote exits.
+      try { _write(session, [1]); } catch (_) {}
+      try { await session.done.timeout(const Duration(seconds: 5)); } catch (_) {}
+
+      String detail;
+      try {
+        final stderr = await _stderrSnapshot(session);
+        detail = stderr.isNotEmpty ? stderr : e.toString();
+      } catch (_) {
+        detail = e.toString();
+      }
       return task.copyWith(
         status: TransferStatus.failed,
         errorMessage: '$filename ← ${task.remotePath}: $detail',
