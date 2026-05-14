@@ -102,6 +102,13 @@ class _ChatPathIndicatorState extends ConsumerState<ChatPathIndicator> {
           }
         }
       }
+      // non-hidden dirs first (alpha), hidden dirs last (alpha)
+      dirs.sort((a, b) {
+        final aHidden = a.startsWith('.');
+        final bHidden = b.startsWith('.');
+        if (aHidden != bHidden) return aHidden ? 1 : -1;
+        return a.compareTo(b);
+      });
 
       if (!mounted) return;
       setState(() { _dirs = dirs; _loading = false; });

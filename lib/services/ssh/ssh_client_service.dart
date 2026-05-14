@@ -44,6 +44,28 @@ class SshClientService {
     return output;
   }
 
+  /// Execute a command and return combined stdout + stderr.
+  /// Stderr is appended to stdout when non-empty.
+  Future<String> executeCombined(String command) async {
+    if (_client == null) throw Exception('SSH not connected');
+
+    final session = await _client!.execute(
+      command,
+      pty: const SSHPtyConfig(width: 160),
+    );
+
+    final results = await Future.wait([
+      utf8.decodeStream(session.stdout),
+      utf8.decodeStream(session.stderr),
+    ]);
+    await session.done;
+
+    final out = results[0].trim();
+    final err = results[1].trim();
+    if (err.isNotEmpty) return '$out\n$err';
+    return out;
+  }
+
   /// Execute pwd to get the current working directory on the remote host.
   Future<String> getHomeDirectory() async {
     final output = await execute('echo ~');

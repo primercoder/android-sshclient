@@ -179,11 +179,11 @@ class _HomePageState extends ConsumerState<HomePage> {
           child: Form(
             key: formKey,
             child: Column(mainAxisSize: MainAxisSize.min, children: [
-              TextFormField(controller: nameCtrl, decoration: const InputDecoration(labelText: '标记名', prefixIcon: Icon(Icons.label), isDense: true)),
+              TextFormField(controller: nameCtrl, decoration: const InputDecoration(labelText: '标记名', prefixIcon: Icon(Icons.label), isDense: false)),
               const SizedBox(height: 8),
               TextFormField(
                 controller: ipCtrl,
-                decoration: const InputDecoration(labelText: 'IP 地址', prefixIcon: Icon(Icons.computer), isDense: true),
+                decoration: const InputDecoration(labelText: 'IP 地址', prefixIcon: Icon(Icons.computer), isDense: false),
                 validator: (v) {
                   if (v == null || v.isEmpty) return '请输入 IP';
                   final parts = v.trim().split('.');
@@ -193,11 +193,11 @@ class _HomePageState extends ConsumerState<HomePage> {
                 },
               ),
               const SizedBox(height: 8),
-              TextFormField(controller: portCtrl, decoration: const InputDecoration(labelText: '端口', prefixIcon: Icon(Icons.numbers), isDense: true), keyboardType: TextInputType.number),
+              TextFormField(controller: portCtrl, decoration: const InputDecoration(labelText: '端口', prefixIcon: Icon(Icons.numbers), isDense: false), keyboardType: TextInputType.number),
               const SizedBox(height: 8),
-              TextFormField(controller: userCtrl, decoration: const InputDecoration(labelText: '用户名', prefixIcon: Icon(Icons.person), isDense: true)),
+              TextFormField(controller: userCtrl, decoration: const InputDecoration(labelText: '用户名', prefixIcon: Icon(Icons.person), isDense: false)),
               const SizedBox(height: 8),
-              TextFormField(controller: passCtrl, decoration: const InputDecoration(labelText: '密码', prefixIcon: Icon(Icons.lock), isDense: true), obscureText: true),
+              TextFormField(controller: passCtrl, decoration: const InputDecoration(labelText: '密码', prefixIcon: Icon(Icons.lock), isDense: false), obscureText: true),
             ]),
           ),
         ),
@@ -287,11 +287,11 @@ class _HomePageState extends ConsumerState<HomePage> {
           child: Form(
             key: formKey,
             child: Column(mainAxisSize: MainAxisSize.min, children: [
-              TextFormField(controller: nameCtrl, decoration: const InputDecoration(labelText: '标记名', prefixIcon: Icon(Icons.label), isDense: true)),
+              TextFormField(controller: nameCtrl, decoration: const InputDecoration(labelText: '标记名', prefixIcon: Icon(Icons.label), isDense: false)),
               const SizedBox(height: 8),
-              TextFormField(controller: userCtrl, decoration: const InputDecoration(labelText: '用户名', prefixIcon: Icon(Icons.person), isDense: true)),
+              TextFormField(controller: userCtrl, decoration: const InputDecoration(labelText: '用户名', prefixIcon: Icon(Icons.person), isDense: false)),
               const SizedBox(height: 8),
-              TextFormField(controller: passCtrl, decoration: const InputDecoration(labelText: '密码', prefixIcon: Icon(Icons.lock), isDense: true), obscureText: true),
+              TextFormField(controller: passCtrl, decoration: const InputDecoration(labelText: '密码', prefixIcon: Icon(Icons.lock), isDense: false), obscureText: true),
             ]),
           ),
         ),
@@ -490,10 +490,10 @@ class _HomePageState extends ConsumerState<HomePage> {
           child: Form(
             key: formKey,
             child: Column(mainAxisSize: MainAxisSize.min, children: [
-              TextFormField(controller: nameCtrl, decoration: const InputDecoration(labelText: '标记名', prefixIcon: Icon(Icons.label), isDense: true)),
+              TextFormField(controller: nameCtrl, decoration: const InputDecoration(labelText: '标记名', prefixIcon: Icon(Icons.label), isDense: false)),
               const SizedBox(height: 8),
               TextFormField(
-                controller: ipCtrl, decoration: const InputDecoration(labelText: 'IP 地址', prefixIcon: Icon(Icons.computer), isDense: true),
+                controller: ipCtrl, decoration: const InputDecoration(labelText: 'IP 地址', prefixIcon: Icon(Icons.computer), isDense: false),
                 validator: (v) {
                   if (v == null || v.isEmpty) return '请输入 IP';
                   final parts = v.trim().split('.');
@@ -503,11 +503,11 @@ class _HomePageState extends ConsumerState<HomePage> {
                 },
               ),
               const SizedBox(height: 8),
-              TextFormField(controller: portCtrl, decoration: const InputDecoration(labelText: '端口', prefixIcon: Icon(Icons.numbers), isDense: true), keyboardType: TextInputType.number),
+              TextFormField(controller: portCtrl, decoration: const InputDecoration(labelText: '端口', prefixIcon: Icon(Icons.numbers), isDense: false), keyboardType: TextInputType.number),
               const SizedBox(height: 8),
-              TextFormField(controller: userCtrl, decoration: const InputDecoration(labelText: '用户名', prefixIcon: Icon(Icons.person), isDense: true)),
+              TextFormField(controller: userCtrl, decoration: const InputDecoration(labelText: '用户名', prefixIcon: Icon(Icons.person), isDense: false)),
               const SizedBox(height: 8),
-              TextFormField(controller: passCtrl, decoration: const InputDecoration(labelText: '密码', prefixIcon: Icon(Icons.lock), isDense: true), obscureText: true),
+              TextFormField(controller: passCtrl, decoration: const InputDecoration(labelText: '密码', prefixIcon: Icon(Icons.lock), isDense: false), obscureText: true),
             ]),
           ),
         ),
@@ -551,10 +551,10 @@ class _HomePageState extends ConsumerState<HomePage> {
           child: Form(
             key: formKey,
             child: Column(mainAxisSize: MainAxisSize.min, children: [
-              TextFormField(controller: nameCtrl, decoration: const InputDecoration(labelText: '标记名', prefixIcon: Icon(Icons.label), isDense: true)),
+              TextFormField(controller: nameCtrl, decoration: const InputDecoration(labelText: '标记名', prefixIcon: Icon(Icons.label), isDense: false)),
               const SizedBox(height: 8),
               TextFormField(
-                controller: ipCtrl, decoration: const InputDecoration(labelText: 'IP 地址', prefixIcon: Icon(Icons.computer), isDense: true),
+                controller: ipCtrl, decoration: const InputDecoration(labelText: 'IP 地址', prefixIcon: Icon(Icons.computer), isDense: false),
                 validator: (v) {
                   if (v == null || v.isEmpty) return '请输入 IP';
                   final parts = v.trim().split('.');
@@ -564,11 +564,11 @@ class _HomePageState extends ConsumerState<HomePage> {
                 },
               ),
               const SizedBox(height: 8),
-              TextFormField(controller: portCtrl, decoration: const InputDecoration(labelText: '端口', prefixIcon: Icon(Icons.numbers), isDense: true), keyboardType: TextInputType.number),
+              TextFormField(controller: portCtrl, decoration: const InputDecoration(labelText: '端口', prefixIcon: Icon(Icons.numbers), isDense: false), keyboardType: TextInputType.number),
               const SizedBox(height: 8),
-              TextFormField(controller: userCtrl, decoration: const InputDecoration(labelText: '用户名', prefixIcon: Icon(Icons.person), isDense: true), validator: (v) => (v == null || v.isEmpty) ? '请输入用户名' : null),
+              TextFormField(controller: userCtrl, decoration: const InputDecoration(labelText: '用户名', prefixIcon: Icon(Icons.person), isDense: false), validator: (v) => (v == null || v.isEmpty) ? '请输入用户名' : null),
               const SizedBox(height: 8),
-              TextFormField(controller: passCtrl, decoration: const InputDecoration(labelText: '密码', prefixIcon: Icon(Icons.lock), isDense: true), obscureText: true),
+              TextFormField(controller: passCtrl, decoration: const InputDecoration(labelText: '密码', prefixIcon: Icon(Icons.lock), isDense: false), obscureText: true),
             ]),
           ),
         ),

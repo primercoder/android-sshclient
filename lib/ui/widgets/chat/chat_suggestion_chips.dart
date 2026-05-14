@@ -7,7 +7,7 @@ class ChatSuggestionChips extends StatelessWidget {
 
   static const _commands = [
     ('pwd', 'pwd'),
-    ('find', 'find'),
+    ('find', 'find . -name'),
     ('grep', 'grep'),
     ('|', '|'),
     ('ls', 'ls'),

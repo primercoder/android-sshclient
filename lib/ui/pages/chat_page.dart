@@ -149,7 +149,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     final currentPwd = ref.read(chatProvider).currentDirectory;
 
     final wrapped = 'cd "$currentPwd" && $command && pwd';
-    final raw = await sshService.execute(wrapped);
+    final raw = await sshService.executeCombined(wrapped);
     final output = raw.trim();
 
     if (output.isNotEmpty) {
@@ -172,7 +172,6 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     _inputController.selection = TextSelection.fromPosition(
       TextPosition(offset: _inputController.text.length),
     );
-    _inputFocus.requestFocus();
   }
 
   Future<void> _sendCommand(String command) async {

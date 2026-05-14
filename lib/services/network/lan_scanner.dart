@@ -6,7 +6,7 @@ import 'package:ssh_client/data/models/scan_result.dart';
 
 class LanScanner {
   static const int _batchSize = 100;
-  static const int _batchDelayMs = 300;
+  static const int _batchDelayMs = 3000;
 
   Future<List<ScanResult>> scan({
     required String cidr,

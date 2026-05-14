@@ -2,20 +2,28 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:ssh_client/data/models/chat_message.dart';
 
-class ChatBubble extends StatelessWidget {
+class ChatBubble extends StatefulWidget {
   final ChatMessage message;
 
   const ChatBubble({super.key, required this.message});
 
   @override
+  State<ChatBubble> createState() => _ChatBubbleState();
+}
+
+class _ChatBubbleState extends State<ChatBubble> {
+  bool _wrapped = false;
+
+  @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final msg = widget.message;
 
-    switch (message.type) {
+    switch (msg.type) {
       case MessageType.command:
-        return _buildCommandBubble(theme, context);
+        return _buildCommandBubble(theme);
       case MessageType.output:
-        return _buildOutputBubble(theme, context);
+        return _buildOutputBubble(theme);
       case MessageType.system:
         return _buildSystemMessage(theme);
       case MessageType.fileTransfer:
@@ -23,7 +31,7 @@ class ChatBubble extends StatelessWidget {
     }
   }
 
-  Widget _buildCommandBubble(ThemeData theme, BuildContext context) {
+  Widget _buildCommandBubble(ThemeData theme) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 4),
       child: Row(
@@ -31,7 +39,7 @@ class ChatBubble extends StatelessWidget {
         children: [
           Flexible(
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              padding: const EdgeInsets.only(left: 14, top: 10, right: 6, bottom: 6),
               decoration: BoxDecoration(
                 color: theme.colorScheme.primaryContainer,
                 borderRadius: BorderRadius.circular(16).copyWith(
@@ -41,27 +49,50 @@ class ChatBubble extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Text(
-                      message.content,
-                      style: TextStyle(
-                        fontFamily: 'monospace',
-                        fontSize: 14,
-                        color: theme.colorScheme.onPrimaryContainer,
-                      ),
-                    ),
-                  ),
+                  _wrapped
+                      ? Text(
+                          widget.message.content,
+                          style: TextStyle(
+                            fontFamily: 'monospace',
+                            fontSize: 14,
+                            color: theme.colorScheme.onPrimaryContainer,
+                          ),
+                        )
+                      : SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: Text(
+                            widget.message.content,
+                            style: TextStyle(
+                              fontFamily: 'monospace',
+                              fontSize: 14,
+                              color: theme.colorScheme.onPrimaryContainer,
+                            ),
+                          ),
+                        ),
                   const SizedBox(height: 4),
-                  GestureDetector(
-                    onTap: () {
-                      Clipboard.setData(ClipboardData(text: message.content));
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('已复制'), duration: Duration(seconds: 1)),
-                      );
-                    },
-                    child: Icon(Icons.copy, size: 13,
-                        color: theme.colorScheme.onPrimaryContainer.withValues(alpha: 0.5)),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      GestureDetector(
+                        onTap: () {
+                          Clipboard.setData(ClipboardData(text: widget.message.content));
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('已复制'), duration: Duration(seconds: 1)),
+                          );
+                        },
+                        child: Icon(Icons.copy, size: 13,
+                            color: theme.colorScheme.onPrimaryContainer.withValues(alpha: 0.5)),
+                      ),
+                      const SizedBox(width: 8),
+                      GestureDetector(
+                        onTap: () => setState(() => _wrapped = !_wrapped),
+                        child: Icon(
+                          _wrapped ? Icons.swap_horiz : Icons.text_snippet,
+                          size: 14,
+                          color: theme.colorScheme.onPrimaryContainer.withValues(alpha: 0.5),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -72,7 +103,7 @@ class ChatBubble extends StatelessWidget {
     );
   }
 
-  Widget _buildOutputBubble(ThemeData theme, BuildContext context) {
+  Widget _buildOutputBubble(ThemeData theme) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 4),
       child: Row(
@@ -80,7 +111,7 @@ class ChatBubble extends StatelessWidget {
         children: [
           Flexible(
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              padding: const EdgeInsets.only(left: 14, top: 10, right: 6, bottom: 6),
               decoration: BoxDecoration(
                 color: theme.colorScheme.surfaceContainerHighest,
                 borderRadius: BorderRadius.circular(16).copyWith(
@@ -90,27 +121,50 @@ class ChatBubble extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: SelectableText(
-                      message.content,
-                      style: TextStyle(
-                        fontFamily: 'monospace',
-                        fontSize: 13,
-                        color: theme.colorScheme.onSurface,
-                      ),
-                    ),
-                  ),
+                  _wrapped
+                      ? SelectableText(
+                          widget.message.content,
+                          style: TextStyle(
+                            fontFamily: 'monospace',
+                            fontSize: 13,
+                            color: theme.colorScheme.onSurface,
+                          ),
+                        )
+                      : SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: SelectableText(
+                            widget.message.content,
+                            style: TextStyle(
+                              fontFamily: 'monospace',
+                              fontSize: 13,
+                              color: theme.colorScheme.onSurface,
+                            ),
+                          ),
+                        ),
                   const SizedBox(height: 4),
-                  GestureDetector(
-                    onTap: () {
-                      Clipboard.setData(ClipboardData(text: message.content));
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('已复制'), duration: Duration(seconds: 1)),
-                      );
-                    },
-                    child: Icon(Icons.copy, size: 13,
-                        color: theme.colorScheme.onSurface.withValues(alpha: 0.4)),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      GestureDetector(
+                        onTap: () {
+                          Clipboard.setData(ClipboardData(text: widget.message.content));
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('已复制'), duration: Duration(seconds: 1)),
+                          );
+                        },
+                        child: Icon(Icons.copy, size: 13,
+                            color: theme.colorScheme.onSurface.withValues(alpha: 0.4)),
+                      ),
+                      const SizedBox(width: 8),
+                      GestureDetector(
+                        onTap: () => setState(() => _wrapped = !_wrapped),
+                        child: Icon(
+                          _wrapped ? Icons.swap_horiz : Icons.text_snippet,
+                          size: 14,
+                          color: theme.colorScheme.onSurface.withValues(alpha: 0.4),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -132,7 +186,7 @@ class ChatBubble extends StatelessWidget {
             borderRadius: BorderRadius.circular(12),
           ),
           child: Text(
-            message.content,
+            widget.message.content,
             style: theme.textTheme.labelSmall?.copyWith(
               color: Colors.grey[600],
             ),
