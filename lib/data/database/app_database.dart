@@ -140,7 +140,7 @@ class AppDatabase {
 
       for (final cmd in commands) {
         _db.execute(
-          'INSERT INTO quick_commands (label, command, category, sort_order, is_builtin) VALUES (?, ?, ?, ?, 1)',
+          'INSERT INTO quick_commands (label, command, category, sort_order, is_builtin) VALUES (?, ?, ?, ?, 0)',
           [cmd.$1, cmd.$2, cmd.$3, cmd.$4],
         );
       }
