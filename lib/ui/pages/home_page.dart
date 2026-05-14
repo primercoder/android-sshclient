@@ -149,6 +149,11 @@ class _HomePageState extends ConsumerState<HomePage> {
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
           FilledButton(onPressed: () {
+            // End all active sessions first so history is saved
+            final chatNotifier = ref.read(chatProvider.notifier);
+            for (final hid in chatNotifier.activeHostIds) {
+              chatNotifier.endSession(hid);
+            }
             ref.read(sshConnectionProvider.notifier).disconnect();
             Navigator.pop(ctx);
             setState(() {});
