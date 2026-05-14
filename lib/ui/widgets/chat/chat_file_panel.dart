@@ -91,9 +91,12 @@ class ChatFilePanel extends ConsumerWidget {
 
     final sshService = ref.read(sshClientServiceProvider);
     if (sshService.client == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('SSH 未连接')));
+      ref.read(chatProvider.notifier).addSystemMessage('SSH 未连接');
       return;
     }
+
+    final chat = ref.read(chatProvider.notifier);
+    await chat.addCommand('⬆️ 正在上传 ${file.name} → $remotePath ...');
 
     try {
       final transferService = ScpTransferService(sshService.client!);
@@ -104,30 +107,14 @@ class ChatFilePanel extends ConsumerWidget {
         transferId: const Uuid().v4(),
       );
       await ref.read(transferProvider.notifier).addTransfer(task);
-      final chat = ref.read(chatProvider.notifier);
       if (task.status == TransferStatus.completed) {
-        final msg = '上传完成: ${file.name} → $remotePath';
-        await chat.addSystemMessage('📄 $msg');
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(msg)),
-          );
-        }
+        await chat.addCommand('📄 上传完成: ${file.name} → $remotePath');
       } else {
         final err = task.errorMessage ?? '未知错误';
-        await chat.addSystemMessage('⚠️ 上传失败: $err');
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('上传失败: $err'), backgroundColor: Colors.red[700]),
-          );
-        }
+        await chat.addCommand('⚠️ 上传失败: $err');
       }
     } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('上传失败: $e'), backgroundColor: Colors.red[700]),
-        );
-      }
+      await chat.addCommand('⚠️ 上传失败: $e');
     }
   }
 
@@ -180,34 +167,24 @@ class ChatFilePanel extends ConsumerWidget {
   Future<void> _downloadFile(String remotePath, String downloadDir, BuildContext context, WidgetRef ref) async {
     final filename = remotePath.split('/').last;
 
-    if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('正在准备下载...'), duration: Duration(seconds: 2)),
-      );
-    }
-
     // Determine a writable local path:
     //   1. Try the user-configured download directory
     //   2. Fall back to the app's documents directory
     String localPath;
     try {
       localPath = '${downloadDir.endsWith('/') ? downloadDir : '$downloadDir/'}$filename';
-      // Verify the parent directory is writable
       final dir = Directory(localPath.substring(0, localPath.lastIndexOf('/')));
       if (!await dir.exists()) {
         await dir.create(recursive: true);
       }
-      // Quick writeability test
       final testFile = File(localPath);
       await testFile.writeAsBytes([]);
       await testFile.delete();
     } catch (_) {
-      // Configured directory not writable (scoped storage) — use app private dir
       final appDir = await getApplicationDocumentsDirectory();
       localPath = '${appDir.path}/$filename';
     }
 
-    // Confirm with user
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -223,15 +200,12 @@ class ChatFilePanel extends ConsumerWidget {
 
     final sshService = ref.read(sshClientServiceProvider);
     if (sshService.client == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('SSH 未连接')));
+      ref.read(chatProvider.notifier).addSystemMessage('SSH 未连接');
       return;
     }
 
-    if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('正在传输...'), duration: Duration(seconds: 1)),
-      );
-    }
+    final chat = ref.read(chatProvider.notifier);
+    await chat.addOutput('⬇️ 正在下载 $filename ← $remotePath ...');
 
     try {
       final transferService = ScpTransferService(sshService.client!);
@@ -243,30 +217,14 @@ class ChatFilePanel extends ConsumerWidget {
       );
 
       await ref.read(transferProvider.notifier).addTransfer(task);
-      final chat = ref.read(chatProvider.notifier);
       if (task.status == TransferStatus.completed) {
-        final msg = '下载完成: $filename → $localPath';
-        await chat.addSystemMessage('📥 $msg');
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(msg)),
-          );
-        }
+        await chat.addOutput('📥 下载完成: $filename → $localPath');
       } else {
         final err = task.errorMessage ?? '未知错误';
-        await chat.addSystemMessage('⚠️ 下载失败: $err');
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('下载失败: $err'), backgroundColor: Colors.red[700]),
-          );
-        }
+        await chat.addOutput('⚠️ 下载失败: $err');
       }
     } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('下载失败: $e'), backgroundColor: Colors.red[700]),
-        );
-      }
+      await chat.addOutput('⚠️ 下载失败: $e');
     }
   }
 }

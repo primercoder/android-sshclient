@@ -175,9 +175,9 @@ class ScpTransferService {
       await sink.close();
       await session.done;
 
-      if (received == 0) {
-        // No data — check stderr for the real error
+      if (received == 0 && localFile.lengthSync() == 0) {
         final stderr = await _stderrSnapshot(session);
+        localFile.deleteSync();
         throw Exception(stderr.isNotEmpty ? stderr : 'File not found or empty');
       }
 
@@ -187,6 +187,11 @@ class ScpTransferService {
         completedAt: DateTime.now(),
       );
     } catch (e) {
+      // Close sink and remove the incomplete local file
+      try { await sink.flush(); } catch (_) {}
+      try { await sink.close(); } catch (_) {}
+      try { await localFile.delete(); } catch (_) {}
+
       final stderr = await _stderrSnapshot(session);
       final detail = stderr.isNotEmpty ? stderr : e.toString();
       return task.copyWith(
