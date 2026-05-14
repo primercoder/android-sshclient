@@ -13,6 +13,8 @@ import 'package:ssh_client/ui/pages/chat_page.dart';
 import 'package:ssh_client/ui/pages/history_page.dart';
 import 'package:ssh_client/ui/pages/settings_page.dart';
 
+enum ScanState { idle, scanning, paused }
+
 class HomePage extends ConsumerStatefulWidget {
   const HomePage({super.key});
 
@@ -23,7 +25,9 @@ class HomePage extends ConsumerStatefulWidget {
 class _HomePageState extends ConsumerState<HomePage> {
   List<Host> _hosts = [];
   List<ScanResult> _scanResults = [];
-  bool _isScanning = false;
+  ScanState _scanState = ScanState.idle;
+  int _totalIps = 0;
+  int _scannedIps = 0;
   late TextEditingController _cidrCtrl;
   final FocusNode _cidrFocus = FocusNode();
   String? _scanError;
@@ -59,8 +63,15 @@ class _HomePageState extends ConsumerState<HomePage> {
       return;
     }
 
+    final totalIps = scanner.estimatedHostCount(cidr);
     _scanAbort = ScanAbort();
-    setState(() { _scanError = null; _isScanning = true; _scanResults = []; });
+    setState(() {
+      _scanError = null;
+      _scanState = ScanState.scanning;
+      _scanResults = [];
+      _totalIps = totalIps;
+      _scannedIps = 0;
+    });
 
     try {
       final results = await scanner.scan(
@@ -69,22 +80,27 @@ class _HomePageState extends ConsumerState<HomePage> {
         onResult: (r) {
           if (mounted) setState(() => _scanResults.add(r));
         },
+        onProgress: (scanned, total) {
+          if (mounted) setState(() => _scannedIps = scanned);
+        },
         abort: _scanAbort,
       );
       if (mounted && _scanAbort?.isStopped != true) {
-        setState(() => _scanResults = results);
+        setState(() { _scanResults = results; _scanState = ScanState.idle; });
       }
     } catch (e) {
       if (mounted) setState(() => _scanError = '扫描出错: $e');
     } finally {
-      if (mounted) setState(() => _isScanning = false);
-      _scanAbort = null;
+      if (mounted && _scanState != ScanState.paused) {
+        setState(() => _scanState = ScanState.idle);
+      }
+      if (_scanAbort?.isStopped == true) _scanAbort = null;
     }
   }
 
-  void _pauseScan() { _scanAbort?.pause(); setState(() {}); }
-  void _resumeScan() { _scanAbort?.resume(); setState(() {}); }
-  void _stopScan() { _scanAbort?.stop(); setState(() => _isScanning = false); }
+  void _pauseScan() { _scanAbort?.pause(); setState(() => _scanState = ScanState.paused); }
+  void _resumeScan() { _scanAbort?.resume(); setState(() => _scanState = ScanState.scanning); }
+  void _stopScan() { _scanAbort?.stop(); setState(() { _scanState = ScanState.idle; _scannedIps = 0; }); }
 
   bool _isHostConnected(Host host) {
     final conn = ref.read(sshConnectionProvider.notifier).activeConnection;
@@ -422,7 +438,7 @@ class _HomePageState extends ConsumerState<HomePage> {
                           ),
                         ),
                         const SizedBox(width: 8),
-                        if (_isScanning) ...[
+                        if (_scanState != ScanState.idle) ...[
                           FilledButton.tonal(
                             onPressed: _scanAbort?.isPaused == true ? _resumeScan : _pauseScan,
                             style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10)),
@@ -436,23 +452,33 @@ class _HomePageState extends ConsumerState<HomePage> {
                           ),
                         ] else
                           FilledButton(
-                            onPressed: _isScanning ? null : _startScan,
+                            onPressed: _startScan,
                             style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10)),
-                            child: Text(_isScanning ? '扫描中' : '扫描'),
+                            child: const Text('扫描'),
                           ),
                       ]),
                       const SizedBox(height: 8),
-                      if (_isScanning)
+                      if (_scanState != ScanState.idle)
                         Padding(
                           padding: const EdgeInsets.only(bottom: 4),
                           child: Column(children: [
-                            const LinearProgressIndicator(),
+                            if (_scanState == ScanState.scanning)
+                              const LinearProgressIndicator()
+                            else
+                              LinearProgressIndicator(value: _totalIps > 0 ? _scannedIps / _totalIps : 0),
                             const SizedBox(height: 4),
-                            Text('端口 22 扫描中 (最长 30 秒)...',
-                                style: TextStyle(fontSize: 11, color: Colors.grey[500])),
+                            Text(
+                              _scanState == ScanState.paused
+                                  ? '已暂停 ($_scannedIps/$_totalIps)'
+                                  : '端口 22 扫描中 ($_scannedIps/$_totalIps)...',
+                              style: TextStyle(fontSize: 11,
+                                  color: _scanState == ScanState.paused
+                                      ? Colors.grey[400]
+                                      : Colors.grey[500]),
+                            ),
                           ]),
                         ),
-                      if (_scanResults.isEmpty && !_isScanning)
+                      if (_scanResults.isEmpty && _scanState == ScanState.idle)
                         Padding(
                           padding: const EdgeInsets.only(top: 4),
                           child: Text('输入 CIDR 点击扫描', style: TextStyle(fontSize: 12, color: Colors.grey[500])),

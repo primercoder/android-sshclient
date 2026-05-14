@@ -25,10 +25,12 @@ class LanScanner {
     int port = 22,
     int timeoutMs = 1000,
     void Function(ScanResult result)? onResult,
+    void Function(int scanned, int total)? onProgress,
     ScanAbort? abort,
   }) async {
     final results = <ScanResult>[];
     final ips = _cidrToIps(cidr);
+    final totalIps = ips.length;
     if (ips.isEmpty) return results;
 
     for (int start = 0; start < ips.length; start += _batchSize) {
@@ -37,7 +39,6 @@ class LanScanner {
         try {
           await abort!.pauseSignal.timeout(const Duration(seconds: 30));
         } on TimeoutException {
-          // still paused, re-check
         }
       }
       if (abort?.isStopped == true) break;
@@ -75,6 +76,8 @@ class LanScanner {
           onResult?.call(result);
         } catch (_) {}
       }));
+
+      onProgress?.call(end, totalIps);
 
       if (end < ips.length) {
         await Future.delayed(const Duration(milliseconds: _batchDelayMs));
@@ -199,6 +202,14 @@ class LanScanner {
       }
     } catch (_) {}
     return null;
+  }
+
+  int estimatedHostCount(String cidr) {
+    final parts = cidr.split('/');
+    if (parts.length != 2) return 0;
+    final bits = int.tryParse(parts[1]);
+    if (bits == null || bits < 16 || bits > 30) return 0;
+    return (1 << (32 - bits)) - 2;
   }
 
   bool isValidCidr(String cidr) {
