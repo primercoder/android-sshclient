@@ -15,6 +15,13 @@
 - **主机管理** — 已保存主机的编辑/删除，连接状态指示
 - **主题** — 深色模式切换，Material3 设计
 
+## 运行截图
+
+|  |  |
+|---|---|
+| ![主页](assets/1_init_page.png) | ![目录浏览](assets/5_top_directory.png) |
+| ![快捷命令编辑](assets/6_quick_cmd_edit.png) | ![会话交互](assets/7_session_interactions.png) |
+
 ## 技术栈
 
 | 组件 | 技术 |
