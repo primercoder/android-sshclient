@@ -78,9 +78,61 @@
 
 ## 构建
 
+### 环境要求
+
+| 工具 | 版本 |
+|------|------|
+| Flutter | 3.41.9 |
+| Dart | 3.11.5 (随 Flutter SDK 捆绑) |
+| Java (JDK) | 17 或 21 |
+| Android SDK | compileSdk (Flutter 默认) |
+| Android Gradle Plugin | 8.11.1 |
+| Gradle | 8.14 (Wrapper) |
+| Kotlin | 2.2.20 |
+| NDK | Flutter 默认版本 |
+
+### 安装步骤
+
+1. **安装 Flutter SDK** — 从 [flutter.dev](https://flutter.dev/docs/get-started/install) 下载 Flutter 3.41.9 或更高版本，并确保 `flutter` 命令已加入 `PATH`。
+
+2. **安装 JDK 17 或 21** — 推荐使用 [OpenJDK](https://openjdk.org/) 或 [Amazon Corretto](https://aws.amazon.com/corretto/)：
+   ```bash
+   # Ubuntu/Debian (以 21 为例)
+   sudo apt install openjdk-21-jdk
+
+   # macOS (Homebrew)
+   brew install openjdk@21
+   ```
+
+3. **配置 Android SDK** — 通过 [Android Studio](https://developer.android.com/studio) 的 SDK Manager 安装 Android SDK，或使用命令行：
+   ```bash
+   flutter config --android-sdk /path/to/android-sdk
+   ```
+
+4. **接受 Android 许可协议**：
+   ```bash
+   flutter doctor --android-licenses
+   ```
+
+5. **验证环境**：
+   ```bash
+   flutter doctor
+   ```
+   确保所有检查项均为绿色。
+
+### 构建 APK
+
 ```bash
+# 安装依赖
+flutter pub get
+
+# 构建 release APK
 flutter build apk --release
 ```
+
+构建产物位于 `build/app/outputs/flutter-apk/app-release.apk`。
+
+> **注意**：发布前请通过 `android/key.properties` 配置发布密钥库，当前使用默认调试密钥库。
 
 ## 开源协议
 
