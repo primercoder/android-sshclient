@@ -149,7 +149,7 @@ class AppDatabase {
   Database get db => _db;
 
   void close() {
-    _db.dispose();
+    _db.close();
     _instance = null;
   }
 }

@@ -249,6 +249,7 @@ class _HomePageState extends ConsumerState<HomePage> {
               firstSeenAt: host.firstSeenAt, lastSeenAt: DateTime.now(),
               connectionCount: host.connectionCount,
             ));
+            if (!ctx.mounted) return;
             Navigator.pop(ctx);
             _loadHosts();
           }, child: const Text('保存')),
@@ -276,14 +277,14 @@ class _HomePageState extends ConsumerState<HomePage> {
           if (hasActive)
             FilledButton(
               onPressed: () => Navigator.pop(ctx, 'force_delete'),
-              child: const Text('断开并删除'),
               style: FilledButton.styleFrom(backgroundColor: Colors.red),
+              child: const Text('断开并删除'),
             ),
           if (!hasActive)
             FilledButton(
               onPressed: () => Navigator.pop(ctx, 'delete'),
-              child: const Text('删除'),
               style: FilledButton.styleFrom(backgroundColor: Colors.red),
+              child: const Text('删除'),
             ),
         ],
       ),
@@ -346,6 +347,7 @@ class _HomePageState extends ConsumerState<HomePage> {
               hostKeyFingerprint: scanResult.ip,
               firstSeenAt: now, lastSeenAt: now,
             ));
+            if (!ctx.mounted) return;
             Navigator.pop(ctx);
             _loadHosts();
           }, child: const Text('添加')),
@@ -366,29 +368,10 @@ class _HomePageState extends ConsumerState<HomePage> {
     final theme = Theme.of(context);
     ref.watch(sshConnectionProvider);
 
-    final activeConn = ref.read(sshConnectionProvider.notifier).activeConnection;
-
     return Scaffold(
       appBar: AppBar(
         title: const Text('SSH Client'),
         actions: [
-          if (activeConn != null)
-            GestureDetector(
-              onTap: _disconnectHost,
-              child: Container(
-                margin: const EdgeInsets.only(right: 4),
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: Colors.green.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  Container(width: 6, height: 6, decoration: const BoxDecoration(color: Colors.green, shape: BoxShape.circle)),
-                  const SizedBox(width: 4),
-                  Text('已连接: ${activeConn.host}', style: TextStyle(fontSize: 11, color: Colors.green[700])),
-                ]),
-              ),
-            ),
           IconButton(
             icon: const Icon(Icons.history),
             onPressed: () => Navigator.push(context,
@@ -590,6 +573,7 @@ class _HomePageState extends ConsumerState<HomePage> {
               hostKeyFingerprint: ipCtrl.text.trim(),
               firstSeenAt: now, lastSeenAt: now,
             ));
+            if (!ctx.mounted) return;
             Navigator.pop(ctx);
             _loadHosts();
           }, child: const Text('保存')),
@@ -659,6 +643,7 @@ class _HomePageState extends ConsumerState<HomePage> {
             ));
             await _loadHosts();
 
+            if (!ctx.mounted) return;
             Navigator.pop(ctx);
             _connectToHost(ip: ip, port: port, username: user, password: pass);
           }, child: const Text('连接')),

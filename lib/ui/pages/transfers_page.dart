@@ -32,7 +32,7 @@ class _TransfersPageState extends ConsumerState<TransfersPage> {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Icon(Icons.file_download, size: 80,
-                      color: theme.colorScheme.primary.withOpacity(0.3)),
+                      color: theme.colorScheme.primary.withValues(alpha: 0.3)),
                   const SizedBox(height: 16),
                   Text('暂无传输记录',
                       style: theme.textTheme.titleMedium

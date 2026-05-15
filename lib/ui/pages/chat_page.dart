@@ -4,7 +4,6 @@ import 'package:ssh_client/data/models/chat_message.dart';
 import 'package:ssh_client/data/models/host.dart';
 import 'package:ssh_client/data/models/direct_connect_info.dart';
 import 'package:ssh_client/data/models/quick_command.dart';
-import 'package:ssh_client/data/database/dao/quick_command_dao.dart';
 import 'package:ssh_client/providers/chat_provider.dart';
 import 'package:ssh_client/providers/ssh_connection_provider.dart';
 import 'package:ssh_client/providers/providers.dart';
@@ -130,11 +129,20 @@ class _ChatPageState extends ConsumerState<ChatPage> {
 
     try {
       final dao = await ref.read(quickCommandDaoProvider.future);
-      dao.insert(QuickCommand(
+      final newId = dao.insert(QuickCommand(
         label: nameCtrl.text.trim(),
         command: cmdCtrl.text.trim(),
       ));
-      _loadQuickCommands();
+      _quickCommands = dao.getAll();
+      final idx = _quickCommands.indexWhere((c) => c.commandId == newId);
+      if (idx > 0) {
+        final cmd = _quickCommands.removeAt(idx);
+        _quickCommands.insert(0, cmd);
+        for (int i = 0; i < _quickCommands.length; i++) {
+          dao.update(_quickCommands[i].copyWith(sortOrder: i));
+        }
+      }
+      if (mounted) setState(() {});
     } catch (_) {}
   }
 
@@ -178,6 +186,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
               label: nameCtrl.text.trim(),
               command: cmdCtrl.text.trim(),
             ));
+            if (!ctx.mounted) return;
             Navigator.pop(ctx);
           }, child: const Text('保存')),
         ],
@@ -210,7 +219,6 @@ class _ChatPageState extends ConsumerState<ChatPage> {
   void _showManageSheet() {
     showModalBottomSheet(
       context: context,
-      isScrollControlled: true,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setSheetState) {
           final cmds = List<QuickCommand>.from(_quickCommands);
@@ -240,51 +248,52 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                     ),
                   ),
                   const Divider(),
-                  Flexible(
-                    child: cmds.isEmpty
-                        ? const Padding(padding: EdgeInsets.all(24), child: Text('暂无快捷命令'))
-                        : ReorderableListView.builder(
-                            shrinkWrap: true,
-                            itemCount: cmds.length,
-                            onReorder: (o, n) {
-                              if (n > o) n--;
-                              final cmd = cmds.removeAt(o);
-                              cmds.insert(n, cmd);
-                              _reorderQuickCommand(o, n).then((_) => setSheetState(() {}));
-                            },
-                            itemBuilder: (ctx, i) {
-                              final cmd = cmds[i];
-                              return ListTile(
-                                key: ValueKey(cmd.commandId ?? i),
-                                leading: const Icon(Icons.drag_handle),
-                                title: Text(cmd.label, style: const TextStyle(fontSize: 14)),
-                                subtitle: Text(cmd.command,
-                                    style: const TextStyle(fontFamily: 'monospace', fontSize: 12)),
-                                trailing: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    IconButton(
-                                      icon: Icon(Icons.edit, size: 18, color: Colors.grey[600]),
-                                      onPressed: () {
-                                        _editQuickCommand(cmd).then((_) {
-                                          _loadQuickCommands().then((_) => setSheetState(() {}));
-                                        });
-                                      },
-                                    ),
-                                    IconButton(
-                                      icon: Icon(Icons.delete, size: 18, color: Colors.red[300]),
-                                      onPressed: () {
-                                        _deleteQuickCommand(cmd).then((_) {
-                                          _loadQuickCommands().then((_) => setSheetState(() {}));
-                                        });
-                                      },
-                                    ),
-                                  ],
+                  if (cmds.isEmpty)
+                    const Padding(padding: EdgeInsets.all(24), child: Text('暂无快捷命令'))
+                  else
+                    SizedBox(
+                      height: (cmds.length * 64.0).clamp(0, 6 * 64.0),
+                      child: ReorderableListView.builder(
+                        itemCount: cmds.length,
+                        onReorder: (o, n) {
+                          final adjustedN = n > o ? n - 1 : n;
+                          final cmd = cmds.removeAt(o);
+                          cmds.insert(adjustedN, cmd);
+                          _reorderQuickCommand(o, n).then((_) => setSheetState(() {}));
+                        },
+                        itemBuilder: (ctx, i) {
+                          final cmd = cmds[i];
+                          return ListTile(
+                            key: ValueKey(cmd.commandId ?? i),
+                            leading: const Icon(Icons.drag_handle),
+                            title: Text(cmd.label, style: const TextStyle(fontSize: 14)),
+                            subtitle: Text(cmd.command,
+                                style: const TextStyle(fontFamily: 'monospace', fontSize: 12)),
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  icon: Icon(Icons.edit, size: 18, color: Colors.grey[600]),
+                                  onPressed: () {
+                                    _editQuickCommand(cmd).then((_) {
+                                      _loadQuickCommands().then((_) => setSheetState(() {}));
+                                    });
+                                  },
                                 ),
-                              );
-                            },
-                          ),
-                  ),
+                                IconButton(
+                                  icon: Icon(Icons.delete, size: 18, color: Colors.red[300]),
+                                  onPressed: () {
+                                    _deleteQuickCommand(cmd).then((_) {
+                                      _loadQuickCommands().then((_) => setSheetState(() {}));
+                                    });
+                                  },
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
+                    ),
                 ],
               ),
             ),
@@ -346,7 +355,16 @@ class _ChatPageState extends ConsumerState<ChatPage> {
       } catch (_) {}
       await chat.addSystemMessage('提示: 在下方输入命令，按回车发送');
     }
-    _scrollToBottom();
+    _jumpToBottom();
+    _prevMsgCount = ref.read(chatProvider).messages.length;
+  }
+
+  void _jumpToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollController.hasClients) {
+        _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
+      }
+    });
   }
 
   void _scrollToBottom() {

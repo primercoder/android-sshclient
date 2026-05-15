@@ -39,6 +39,7 @@ class LanScanner {
         try {
           await abort!.pauseSignal.timeout(const Duration(seconds: 30));
         } on TimeoutException {
+          // resume polling when timeout expires
         }
       }
       if (abort?.isStopped == true) break;

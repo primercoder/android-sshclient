@@ -68,6 +68,7 @@ class ChatFilePanel extends ConsumerWidget {
     if (fileResult == null || fileResult.files.isEmpty) return;
     final file = fileResult.files.first;
     if (file.path == null) return;
+    if (!context.mounted) return;
 
     final remotePath = await showDialog<String>(
       context: context,

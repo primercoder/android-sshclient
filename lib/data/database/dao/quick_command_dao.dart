@@ -13,7 +13,7 @@ class QuickCommandDao {
     return result.map((row) => _fromRow(row)).toList();
   }
 
-  void insert(QuickCommand cmd) {
+  int insert(QuickCommand cmd) {
     _db.execute('''
       INSERT INTO quick_commands (label, command, sort_order, is_builtin)
       VALUES (?, ?, ?, ?)
@@ -23,6 +23,7 @@ class QuickCommandDao {
       cmd.sortOrder,
       cmd.isBuiltin ? 1 : 0,
     ]);
+    return _db.lastInsertRowId;
   }
 
   void update(QuickCommand cmd) {

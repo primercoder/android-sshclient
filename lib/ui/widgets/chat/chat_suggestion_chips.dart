@@ -22,7 +22,7 @@ class ChatSuggestionChips extends StatelessWidget {
       padding: const EdgeInsets.only(left: 4),
       decoration: BoxDecoration(
         border: Border(
-          top: BorderSide(color: theme.dividerColor.withOpacity(0.3)),
+          top: BorderSide(color: theme.dividerColor.withValues(alpha: 0.3)),
         ),
       ),
       child: Row(

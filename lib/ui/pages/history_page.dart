@@ -99,8 +99,8 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
                                   TextButton(onPressed: () => Navigator.pop(ctx, false),
                                       child: const Text('取消')),
                                   FilledButton(onPressed: () => Navigator.pop(ctx, true),
-                                      child: const Text('删除'),
-                                      style: FilledButton.styleFrom(backgroundColor: Colors.red)),
+                                      style: FilledButton.styleFrom(backgroundColor: Colors.red),
+                                      child: const Text('删除')),
                                 ],
                               ),
                             );
@@ -131,9 +131,7 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
 
   void _showSessionInfo(Session session) {
     final hostLabel = session.hostName.isNotEmpty ? session.hostName : session.hostIp;
-    final duration = session.endTime != null
-        ? session.endTime!.difference(session.startTime)
-        : null;
+    final duration = session.endTime?.difference(session.startTime);
 
     showDialog(
       context: context,
@@ -182,10 +180,6 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
     );
   }
 
-  String _formatDate(DateTime dt) {
-    return '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}';
-  }
-
   String _formatDateTime(DateTime dt) {
     return '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')} '
         '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}:${dt.second.toString().padLeft(2, '0')}';
@@ -195,9 +189,9 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
     final h = d.inHours;
     final m = d.inMinutes.remainder(60);
     final s = d.inSeconds.remainder(60);
-    if (h > 0) return '${h}时${m}分${s}秒';
-    if (m > 0) return '${m}分${s}秒';
-    return '${s}秒';
+    if (h > 0) return '$h时$m分$s秒';
+    if (m > 0) return '$m分$s秒';
+    return '$s秒';
   }
 }
 
@@ -224,9 +218,7 @@ class _HistoryReplayPage extends StatelessWidget {
             icon: const Icon(Icons.info_outline),
             tooltip: '会话详情',
             onPressed: () {
-              final duration = session.endTime != null
-                  ? session.endTime!.difference(session.startTime)
-                  : null;
+              final duration = session.endTime?.difference(session.startTime);
               showDialog(
                 context: context,
                 builder: (ctx) => AlertDialog(
@@ -301,8 +293,8 @@ class _HistoryReplayPage extends StatelessWidget {
     final h = d.inHours;
     final m = d.inMinutes.remainder(60);
     final s = d.inSeconds.remainder(60);
-    if (h > 0) return '${h}时${m}分${s}秒';
-    if (m > 0) return '${m}分${s}秒';
-    return '${s}秒';
+    if (h > 0) return '$h时$m分$s秒';
+    if (m > 0) return '$m分$s秒';
+    return '$s秒';
   }
 }
