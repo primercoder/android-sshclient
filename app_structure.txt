@@ -1,34 +1,4 @@
 ===============================================================================
-  Bug History (用户反馈记录)
-===============================================================================
-
-v1 问题: SSH shell模式, broadcast stream数据丢失, 直连失败
-  - StreamController.broadcast() 无监听者时丢弃数据 → shell提示符丢失
-  - 直连和收藏路径不一致 → singleton provider 状态污染
-  - 解决: 改用 exec 模式, connect()前先disconnect()
-
-v2 问题: Utf8Decoder类型转换, 路径跟踪, 退出逻辑
-  - utf8.decoder as StreamTransformer<Uint8List, String> → 类型转换崩溃
-  - cd Desktop && ls → 路径变成 "Desktop && ls" (本地字符串解析)
-  - 退出对话框选项逻辑错误
-  - 解决: utf8.decodeStream(), 每条命令包装 cd <pwd> && <cmd> && pwd
-
-v3 问题: 主机覆盖, 扫描UI, SCP错误, 文件下载
-  - hostId用IP导致第二个同IP主机覆盖第一个
-  - Utf8Decoder SCP下载崩溃
-  - 下载文件不存在 (直接写 /storage/emulated/0/Download/ 被SAF拦截)
-  - 解决: UUID, FilePicker.saveFile(SAF)
-
-v4 问题: cd包装后下拉目录仅显示'..', 会话不保持, 删除无效
-  - ls -a 用 test -d 判断目录 → 多次SSH调用且不准确
-  - 保持会话后重新进入 → 新session, 对话清空
-  - 历史/主机删除无响应
-  - SCP失败连带SSH传输关闭 (Transport is closed)
-  - 下载无本地路径输入框
-  - 解决: ls -la 解析权限位'd'判断目录, ChatNotifier._activeSessions,
-    不显式 scpSession.close(), 双输入框(远程+本地), 已测通
-
-===============================================================================
   当前架构 (Current Architecture)
 ===============================================================================
 

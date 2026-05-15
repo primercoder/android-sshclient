@@ -1,76 +1,84 @@
 # SSH Client
 
-An Android SSH client built with Flutter, featuring session management, file transfer via SCP, LAN scanning, and interactive command execution.
+基于 Flutter 构建的 Android SSH 客户端，支持会话管理、SCP 文件传输、局域网扫描和交互式命令执行。
 
-## Features
+## 功能特性
 
-- **SSH Connection** — Connect to remote hosts via password authentication, with session persistence
-- **Command Execution** — Interactive command shell with directory tracking (`cd` wrapper + `pwd` parsing)
-- **Directory Browser** — Top path bar shows current directory, click to list subdirectories via `ls -la`
-- **File Transfer (SCP)** — Upload/download files through the SSH connection
-- **Session Management** — Keep sessions alive when leaving chat page, reconnect seamlessly
-- **History** — Per-session history with messages, search, and replay
-- **LAN Scanner** — Batch TCP port scanner (100 IPs/batch, 3s interval) with pause/resume/stop
-- **Quick Commands** — Customizable command chips with add/edit/delete/reorder via manage panel
-- **Host Management** — Saved hosts with edit/delete, connection status indicators
-- **Theme** — Dark mode toggle, Material3 design
+- **SSH 连接** — 密码认证连接远程主机，支持会话持久化
+- **命令执行** — 交互式命令终端，自动追踪工作目录（`cd` 包装 + `pwd` 解析）
+- **目录浏览** — 顶栏显示当前路径，点击通过 `ls -la` 列出子目录
+- **文件传输 (SCP)** — 通过 SSH 连接上传/下载文件
+- **会话管理** — 离开聊天页时可保持会话活跃，无缝重连
+- **历史记录** — 按会话保存消息历史，支持搜索和回放
+- **局域网扫描** — 批量 TCP 端口扫描（每批 100 IP，3 秒间隔），支持暂停/继续/停止
+- **快捷命令** — 可自定义的命令芯片，支持添加/编辑/删除/拖拽排序
+- **主机管理** — 已保存主机的编辑/删除，连接状态指示
+- **主题** — 深色模式切换，Material3 设计
 
-## Tech Stack
+## 技术栈
 
-| Component | Technology |
+| 组件 | 技术 |
 |-----------|-----------|
-| Framework | Flutter 3.41.9 |
-| Language | Dart 3.11.5 |
+| 框架 | Flutter 3.41.9 |
+| 语言 | Dart 3.11.5 |
 | SSH | dartssh2 2.17.1 |
-| State Management | Riverpod 2.6.1 |
-| Database | SQLite (sqlite3) |
-| Min Android API | 34 |
-| Target Android API | 35 |
+| 状态管理 | Riverpod 2.6.1 |
+| 数据库 | SQLite (sqlite3) |
+| 最低 Android API | 34 |
+| 目标 Android API | 35 |
 
-## Architecture
+## 架构
 
 ```
-Home Page (host list + LAN scan)
-  └── Chat Page
-       ├── Path Bar (directory browser)
-       ├── Message List
-       │    ├── Command (right-aligned)
-       │    ├── Output (left-aligned)
-       │    ├── System (centered)
-       │    └── File Transfer (TransferBubble)
-       ├── Quick Command Chips (customizable)
-       ├── File Panel (upload/download)
-       └── Input Bar
+主页 (主机列表 + 局域网扫描)
+  └── 聊天页
+       ├── 路径栏 (目录浏览)
+       ├── 消息列表
+       │    ├── 命令 (右对齐)
+       │    ├── 输出 (左对齐)
+       │    ├── 系统 (居中)
+       │    └── 文件传输 (TransferBubble)
+       ├── 快捷命令芯片 (可自定义)
+       ├── 文件面板 (上传/下载)
+       └── 输入栏
 ```
 
-**Command Execution Engine:**
-Every command is wrapped as `cd "<current_pwd>" && <command> && pwd`. The last line of output is parsed as the new working directory; everything else is displayed as command output.
+**命令执行引擎：**
+每条命令包装为 `cd "<当前pwd>" && <命令> && pwd`。输出末行解析为新的工作目录，其余行和 stderr 作为命令输出显示。
 
-**Session Lifecycle:**
-- Sessions are tracked by unique ID (generated from host info + timestamp)
-- Active sessions persist in memory; leaving the chat page with "keep session" preserves them
-- Disconnecting sets `endTime` and moves the session to history
-- Re-entering a kept session restores the last working directory via `cd "$lastDir" && pwd`
+**会话生命周期：**
+- 会话通过唯一 ID（主机信息 + 时间戳生成）追踪
+- 活跃会话保留在内存中；离开聊天页时选择"保持会话"即可保留
+- 断开连接时设置 `endTime`，将会话移至历史记录
+- 重新进入保持的会话时，通过 `cd "$lastDir" && pwd` 恢复工作目录
 
-## Database Tables
+## 数据库表
 
-| Table | Purpose |
+| 表 | 用途 |
 |-------|---------|
-| `hosts` | Saved SSH hosts with credentials |
-| `sessions` | Connection sessions with timing |
-| `chat_messages` | Command/output/system messages |
-| `transfer_tasks` | File transfer records |
-| `quick_commands` | User-customizable command shortcuts |
+| `hosts` | 保存的 SSH 主机及凭据 |
+| `sessions` | 连接会话及时间信息 |
+| `chat_messages` | 命令/输出/系统消息 |
+| `transfer_tasks` | 文件传输记录 |
+| `quick_commands` | 用户自定义命令快捷键 |
 
-## Security Notes
+## 安全说明
 
-- SSH passwords are stored in SQLite; no encryption at rest (device-level encryption recommended)
-- No API keys, tokens, or certificates are bundled
-- The app uses Android's Storage Access Framework (SAF) for file downloads on Android 14+
-- **Release builds** currently use the default debug keystore — configure a release keystore via `android/key.properties` before distribution
+- SSH 密码以明文存储在 SQLite 中（建议启用设备级加密）
+- 不捆绑任何 API 密钥、令牌或证书
+- Android 14+ 使用 Storage Access Framework (SAF) 下载文件
+- **发布构建**目前使用默认调试密钥库 — 发布前请通过 `android/key.properties` 配置发布密钥库
 
-## Building
+## 构建
 
 ```bash
 flutter build apk --release
 ```
+
+## 开源协议
+
+本项目基于 MIT 协议开源。详见 [LICENSE](LICENSE) 文件。
+
+## 图标来源
+
+响应设备图标由 mobirise 提供，来源于 <a href="https://icon-icons.com/zh/authors/581-mobirise">Icon-Icons.com</a>。
