@@ -408,7 +408,7 @@ class _HomePageState extends ConsumerState<HomePage> {
   Future<void> _importKeyFile(String hostId, String suffix,
       ValueChanged<String?> onPath, ValueChanged<String?> onContent,
       ValueChanged<String?>? onOtherContent) async {
-    final result = await FilePicker.platform.pickFiles();
+    final result = await FilePicker.pickFiles();
     if (result == null || result.files.isEmpty) return;
     final srcPath = result.files.first.path;
     if (srcPath == null) return;
@@ -456,7 +456,7 @@ class _HomePageState extends ConsumerState<HomePage> {
             }, child: const Text('复制')),
           if (canExport && exportPath != null)
             TextButton(onPressed: () async {
-              final outDir = await FilePicker.platform.getDirectoryPath();
+              final outDir = await FilePicker.getDirectoryPath();
               if (outDir != null) {
                 final ok = await KeyService.exportPublicKey(exportPath, '$outDir/${exportPath.split('/').last}');
                 if (ctx.mounted) {

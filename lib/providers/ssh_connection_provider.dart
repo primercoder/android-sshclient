@@ -10,12 +10,16 @@ enum SshConnectionState {
   error,
 }
 
-class SshConnectionNotifier extends StateNotifier<SshConnectionState> {
-  final SshClientService _service;
+class SshConnectionNotifier extends Notifier<SshConnectionState> {
+  late final SshClientService _service;
   String? _errorMessage;
   SshConnectionInfo? _activeConnection;
 
-  SshConnectionNotifier(this._service) : super(SshConnectionState.disconnected);
+  @override
+  SshConnectionState build() {
+    _service = ref.read(sshClientServiceProvider);
+    return SshConnectionState.disconnected;
+  }
 
   String? get errorMessage => _errorMessage;
   SshConnectionInfo? get activeConnection => _activeConnection;
@@ -51,7 +55,6 @@ class SshConnectionNotifier extends StateNotifier<SshConnectionState> {
 }
 
 final sshConnectionProvider =
-    StateNotifierProvider<SshConnectionNotifier, SshConnectionState>((ref) {
-  final service = ref.read(sshClientServiceProvider);
-  return SshConnectionNotifier(service);
-});
+    NotifierProvider<SshConnectionNotifier, SshConnectionState>(
+  SshConnectionNotifier.new,
+);

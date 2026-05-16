@@ -23,14 +23,14 @@ class TransferState {
   }
 }
 
-class TransferNotifier extends StateNotifier<TransferState> {
-  final Ref _ref;
+class TransferNotifier extends Notifier<TransferState> {
   TransferDao? _dao;
 
-  TransferNotifier(this._ref) : super(const TransferState());
+  @override
+  TransferState build() => const TransferState();
 
   Future<TransferDao> _getDao() async {
-    _dao ??= await _ref.read(transferDaoProvider.future);
+    _dao ??= await ref.read(transferDaoProvider.future);
     return _dao!;
   }
 
@@ -68,6 +68,4 @@ class TransferNotifier extends StateNotifier<TransferState> {
 }
 
 final transferProvider =
-    StateNotifierProvider<TransferNotifier, TransferState>((ref) {
-  return TransferNotifier(ref);
-});
+    NotifierProvider<TransferNotifier, TransferState>(TransferNotifier.new);

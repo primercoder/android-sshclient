@@ -64,7 +64,7 @@ class ChatFilePanel extends ConsumerWidget {
   Future<void> _uploadFile(BuildContext context, WidgetRef ref) async {
     final remotePathCtrl = TextEditingController(text: currentDirectory);
 
-    final fileResult = await FilePicker.platform.pickFiles();
+    final fileResult = await FilePicker.pickFiles();
     if (fileResult == null || fileResult.files.isEmpty) return;
     final file = fileResult.files.first;
     if (file.path == null) return;

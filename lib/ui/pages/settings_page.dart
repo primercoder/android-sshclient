@@ -22,7 +22,7 @@ class SettingsPage extends ConsumerWidget {
               secondary: Icon(isDark ? Icons.dark_mode : Icons.light_mode,
                   color: theme.colorScheme.primary),
               value: isDark,
-              onChanged: (v) => ref.read(isDarkModeProvider.notifier).state = v,
+              onChanged: (v) => ref.read(isDarkModeProvider.notifier).update(v),
             ),
           ),
           const SizedBox(height: 8),
@@ -52,7 +52,7 @@ class SettingsPage extends ConsumerWidget {
                   ),
                 );
                 if (result != null && result.isNotEmpty) {
-                  ref.read(downloadDirProvider.notifier).state = result;
+                  ref.read(downloadDirProvider.notifier).update(result);
                 }
               },
             ),

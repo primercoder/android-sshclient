@@ -53,6 +53,18 @@ final lanScannerProvider = Provider<LanScanner>((ref) {
   return LanScanner();
 });
 
-final isDarkModeProvider = StateProvider<bool>((ref) => false);
+class IsDarkModeNotifier extends Notifier<bool> {
+  @override
+  bool build() => false;
+  void update(bool v) => state = v;
+}
 
-final downloadDirProvider = StateProvider<String>((ref) => '/storage/emulated/0/Download');
+final isDarkModeProvider = NotifierProvider<IsDarkModeNotifier, bool>(IsDarkModeNotifier.new);
+
+class DownloadDirNotifier extends Notifier<String> {
+  @override
+  String build() => '/storage/emulated/0/Download';
+  void update(String v) => state = v;
+}
+
+final downloadDirProvider = NotifierProvider<DownloadDirNotifier, String>(DownloadDirNotifier.new);

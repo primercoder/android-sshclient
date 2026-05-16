@@ -41,23 +41,23 @@ class ChatState {
   }
 }
 
-class ChatNotifier extends StateNotifier<ChatState> {
-  final Ref _ref;
+class ChatNotifier extends Notifier<ChatState> {
   MessageDao? _messageDao;
   SessionDao? _sessionDao;
 
   /// Active sessions keyed by sessionId
   final Map<String, Session> _activeSessions = {};
 
-  ChatNotifier(this._ref) : super(const ChatState());
+  @override
+  ChatState build() => const ChatState();
 
   Future<MessageDao> get _messageDaoAsync async {
-    _messageDao ??= await _ref.read(messageDaoProvider.future);
+    _messageDao ??= await ref.read(messageDaoProvider.future);
     return _messageDao!;
   }
 
   Future<SessionDao> get _sessionDaoAsync async {
-    _sessionDao ??= await _ref.read(sessionDaoProvider.future);
+    _sessionDao ??= await ref.read(sessionDaoProvider.future);
     return _sessionDao!;
   }
 
@@ -210,6 +210,4 @@ class ChatNotifier extends StateNotifier<ChatState> {
   }
 }
 
-final chatProvider = StateNotifierProvider<ChatNotifier, ChatState>((ref) {
-  return ChatNotifier(ref);
-});
+final chatProvider = NotifierProvider<ChatNotifier, ChatState>(ChatNotifier.new);
