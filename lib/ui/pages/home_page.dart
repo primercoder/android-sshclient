@@ -39,6 +39,7 @@ class _HomePageState extends ConsumerState<HomePage> {
   final FocusNode _cidrFocus = FocusNode();
   String? _scanError;
   ScanAbort? _scanAbort;
+  final Set<String> _seenIps = {};
 
   @override
   void initState() {
@@ -64,6 +65,7 @@ class _HomePageState extends ConsumerState<HomePage> {
   }
 
   Future<void> _startScan() async {
+    if (_scanState != ScanState.idle) return;
     final cidr = _cidrCtrl.text.trim();
     final port = int.tryParse(_portCtrl.text.trim()) ?? 22;
     final timeoutMs = int.tryParse(_timeoutCtrl.text.trim()) ?? 1000;
@@ -80,25 +82,35 @@ class _HomePageState extends ConsumerState<HomePage> {
       _scanError = null;
       _scanState = ScanState.scanning;
       _scanResults = [];
+      _seenIps.clear();
       _totalIps = totalIps;
       _scannedIps = 0;
     });
 
     try {
-      final results = await scanner.scan(
+      await scanner.scan(
         cidr: cidr,
         port: port,
         timeoutMs: timeoutMs,
         onResult: (r) {
-          if (mounted) setState(() => _scanResults.add(r));
+          if (!mounted || _seenIps.contains(r.ip)) return;
+          setState(() {
+            _seenIps.add(r.ip);
+            _scanResults.add(r);
+          });
         },
         onProgress: (scanned, total) {
-          if (mounted) setState(() => _scannedIps = scanned);
+          if (mounted) {
+            setState(() {
+              _scannedIps = scanned;
+              _totalIps = total;
+            });
+          }
         },
         abort: _scanAbort,
       );
       if (mounted && _scanAbort?.isStopped != true) {
-        setState(() { _scanResults = results; _scanState = ScanState.idle; });
+        setState(() => _scanState = ScanState.idle);
       }
     } catch (e) {
       if (mounted) setState(() => _scanError = '扫描出错: $e');

@@ -17,7 +17,7 @@ class ScanAbort {
 }
 
 class LanScanner {
-  static const int _batchSize = 100;
+  static const int _batchSize = 20;
   static const int _batchDelayMs = 3000;
 
   Future<List<ScanResult>> scan({
@@ -47,35 +47,45 @@ class LanScanner {
       final batch = ips.sublist(start, end);
 
       await Future.wait(batch.map((ip) async {
-        final stopwatch = Stopwatch()..start();
-        try {
-          final socket = await Socket.connect(
-            ip, port,
-            timeout: Duration(milliseconds: timeoutMs),
-          );
-          stopwatch.stop();
-
-          String? banner;
+        Socket? socket;
+        int? elapsedMs;
+        for (int attempt = 0; attempt < 2; attempt++) {
+          if (attempt > 0) {
+            await Future.delayed(const Duration(milliseconds: 100));
+          }
+          final sw = Stopwatch()..start();
           try {
-            final data = await socket
-                .timeout(const Duration(milliseconds: 200))
-                .transform(utf8.decoder as StreamTransformer<Uint8List, String>)
-                .take(1)
-                .join()
-                .timeout(const Duration(milliseconds: 200));
-            banner = data;
+            socket = await Socket.connect(
+              ip, port,
+              timeout: Duration(milliseconds: timeoutMs),
+            );
+            sw.stop();
+            elapsedMs = sw.elapsedMilliseconds;
+            break;
           } catch (_) {}
+        }
+        if (socket == null) return;
 
-          await socket.close();
-
-          final result = ScanResult(
-            ip: ip, port: port,
-            sshBanner: banner?.trim(),
-            responseTimeMs: stopwatch.elapsedMilliseconds,
-          );
-          results.add(result);
-          onResult?.call(result);
+        String? banner;
+        try {
+          final data = await socket
+              .timeout(const Duration(milliseconds: 200))
+              .transform(utf8.decoder as StreamTransformer<Uint8List, String>)
+              .take(1)
+              .join()
+              .timeout(const Duration(milliseconds: 200));
+          banner = data;
         } catch (_) {}
+
+        await socket.close();
+
+        final result = ScanResult(
+          ip: ip, port: port,
+          sshBanner: banner?.trim(),
+          responseTimeMs: elapsedMs ?? 0,
+        );
+        results.add(result);
+        onResult?.call(result);
       }));
 
       onProgress?.call(end, totalIps);

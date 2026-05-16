@@ -135,14 +135,17 @@ class AppDatabase {
     final count = _db.select('SELECT COUNT(*) FROM quick_commands').first;
     if (count.values.first == 0) {
       final commands = [
-        ('ls', 'ls -la', 1),
-        ('df', 'df -h', 2),
-        ('ps', 'ps aux', 3),
-        ('free', 'free -h', 4),
-        ('netstat', 'netstat -tlnp', 5),
-        ('ip', 'ip a', 6),
-        ('uptime', 'uptime', 7),
-        ('pwd', 'pwd', 8),
+        ('pwd', 'pwd', 1),
+        ('ls', 'ls -CF', 2),
+        ('free', 'free -h', 3),
+        ('ip', 'ifconfig', 4),
+        ('route', 'ip route', 5),
+        ('du', 'du -h -d 1', 6),
+        ('df', 'df -lh', 7),
+        ('ps', 'ps -ef', 8),
+        ('uptime', 'uptime', 9),
+        ('whoami', 'whoami', 10),
+        ('w', 'w', 11),
       ];
 
       for (final cmd in commands) {
