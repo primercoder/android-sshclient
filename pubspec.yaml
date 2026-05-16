@@ -15,6 +15,9 @@ dependencies:
   # SSH
   dartssh2: ^2.9.0
 
+  # 密钥生成
+  pinenacl: ^0.6.0
+
   # 数据库
   sqlite3: ^3.3.0
   sqlite3_flutter_libs: ^0.5.0

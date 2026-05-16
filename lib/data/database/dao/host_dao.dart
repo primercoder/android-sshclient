@@ -1,5 +1,6 @@
 import 'package:sqlite3/sqlite3.dart';
 import 'package:ssh_client/data/models/host.dart';
+import 'package:ssh_client/data/models/ssh_connection_info.dart';
 
 class HostDao {
   final Database _db;
@@ -34,8 +35,10 @@ class HostDao {
       INSERT OR REPLACE INTO hosts
       (host_id, display_name, current_ip, port, username, password, mac_address,
        host_key_fingerprint, host_key_algorithm, ssh_banner,
-       first_seen_at, last_seen_at, connection_count, notes)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       first_seen_at, last_seen_at, connection_count, notes,
+       auth_method, private_key_path, public_key_path,
+       private_key_content, public_key_content)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ''', [
       host.hostId,
       host.displayName,
@@ -51,6 +54,11 @@ class HostDao {
       host.lastSeenAt.toIso8601String(),
       host.connectionCount,
       host.notes,
+      host.authMethod.name,
+      host.privateKeyPath,
+      host.publicKeyPath,
+      host.privateKeyContent,
+      host.publicKeyContent,
     ]);
   }
 
@@ -60,7 +68,9 @@ class HostDao {
         display_name = ?, current_ip = ?, port = ?, username = ?, password = ?,
         mac_address = ?, host_key_fingerprint = ?, host_key_algorithm = ?,
         ssh_banner = ?, first_seen_at = ?, last_seen_at = ?,
-        connection_count = ?, notes = ?
+        connection_count = ?, notes = ?,
+        auth_method = ?, private_key_path = ?, public_key_path = ?,
+        private_key_content = ?, public_key_content = ?
       WHERE host_id = ?
     ''', [
       host.displayName,
@@ -76,6 +86,11 @@ class HostDao {
       host.lastSeenAt.toIso8601String(),
       host.connectionCount,
       host.notes,
+      host.authMethod.name,
+      host.privateKeyPath,
+      host.publicKeyPath,
+      host.privateKeyContent,
+      host.publicKeyContent,
       host.hostId,
     ]);
   }
@@ -99,5 +114,11 @@ class HostDao {
     lastSeenAt: DateTime.parse(row['last_seen_at'] as String),
     connectionCount: row['connection_count'] as int? ?? 0,
     notes: row['notes'] as String?,
+    authMethod: (row['auth_method'] as String?) == 'publicKey'
+        ? SshAuthMethod.publicKey : SshAuthMethod.password,
+    privateKeyPath: row['private_key_path'] as String?,
+    publicKeyPath: row['public_key_path'] as String?,
+    privateKeyContent: row['private_key_content'] as String?,
+    publicKeyContent: row['public_key_content'] as String?,
   );
 }

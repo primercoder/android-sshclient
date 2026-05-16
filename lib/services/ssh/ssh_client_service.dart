@@ -20,17 +20,26 @@ class SshClientService {
       timeout: const Duration(seconds: 10),
     );
 
+    List<SSHKeyPair>? identities;
+    if (info.authMethod == SshAuthMethod.publicKey && info.privateKeyContent != null) {
+      try {
+        identities = SSHKeyPair.fromPem(info.privateKeyContent!);
+      } catch (_) {}
+    }
+
     _client = SSHClient(
       socket,
       username: info.username,
-      onPasswordRequest: () => info.password,
+      onPasswordRequest: info.authMethod == SshAuthMethod.password
+          ? () => info.password ?? ''
+          : null,
+      identities: identities,
       onVerifyHostKey: (type, fingerprint) => true,
     );
 
     await _client!.authenticated;
   }
 
-  /// Execute a command and return stdout as a string.
   Future<String> execute(String command) async {
     if (_client == null) throw Exception('SSH not connected');
 
@@ -44,8 +53,6 @@ class SshClientService {
     return output;
   }
 
-  /// Execute a command and return combined stdout + stderr.
-  /// Stderr is appended to stdout when non-empty.
   Future<String> executeCombined(String command) async {
     if (_client == null) throw Exception('SSH not connected');
 
@@ -66,10 +73,41 @@ class SshClientService {
     return out;
   }
 
-  /// Execute pwd to get the current working directory on the remote host.
   Future<String> getHomeDirectory() async {
     final output = await execute('echo ~');
     return output.trim();
+  }
+
+  /// Upload a public key to the remote host's authorized_keys using password auth.
+  Future<void> uploadPublicKey({
+    required SshConnectionInfo passwordInfo,
+    required String publicKeyLine,
+  }) async {
+    await disconnect();
+
+    final socket = await SSHSocket.connect(
+      passwordInfo.host, passwordInfo.port,
+      timeout: const Duration(seconds: 10),
+    );
+
+    _client = SSHClient(
+      socket,
+      username: passwordInfo.username,
+      onPasswordRequest: () => passwordInfo.password ?? '',
+      onVerifyHostKey: (type, fingerprint) => true,
+    );
+
+    await _client!.authenticated;
+
+    final escapedKey = publicKeyLine.replaceAll("'", "'\\''");
+    final cmd = 'mkdir -p ~/.ssh && chmod 700 ~/.ssh && '
+        "echo '$escapedKey' >> ~/.ssh/authorized_keys && "
+        'chmod 600 ~/.ssh/authorized_keys';
+
+    final session = await _client!.execute(cmd);
+    await session.done;
+
+    await disconnect();
   }
 
   Future<void> disconnect() async {

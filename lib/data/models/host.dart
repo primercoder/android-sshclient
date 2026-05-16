@@ -1,3 +1,5 @@
+import 'package:ssh_client/data/models/ssh_connection_info.dart';
+
 class Host {
   final String hostId;
   final String displayName;
@@ -13,6 +15,11 @@ class Host {
   final DateTime lastSeenAt;
   final int connectionCount;
   final String? notes;
+  final SshAuthMethod authMethod;
+  final String? privateKeyPath;
+  final String? publicKeyPath;
+  final String? privateKeyContent;
+  final String? publicKeyContent;
 
   const Host({
     required this.hostId,
@@ -29,6 +36,11 @@ class Host {
     required this.lastSeenAt,
     this.connectionCount = 0,
     this.notes,
+    this.authMethod = SshAuthMethod.password,
+    this.privateKeyPath,
+    this.publicKeyPath,
+    this.privateKeyContent,
+    this.publicKeyContent,
   });
 
   Host copyWith({
@@ -46,6 +58,11 @@ class Host {
     DateTime? lastSeenAt,
     int? connectionCount,
     String? notes,
+    SshAuthMethod? authMethod,
+    String? privateKeyPath,
+    String? publicKeyPath,
+    String? privateKeyContent,
+    String? publicKeyContent,
   }) {
     return Host(
       hostId: hostId ?? this.hostId,
@@ -62,6 +79,11 @@ class Host {
       lastSeenAt: lastSeenAt ?? this.lastSeenAt,
       connectionCount: connectionCount ?? this.connectionCount,
       notes: notes ?? this.notes,
+      authMethod: authMethod ?? this.authMethod,
+      privateKeyPath: privateKeyPath ?? this.privateKeyPath,
+      publicKeyPath: publicKeyPath ?? this.publicKeyPath,
+      privateKeyContent: privateKeyContent ?? this.privateKeyContent,
+      publicKeyContent: publicKeyContent ?? this.publicKeyContent,
     );
   }
 
@@ -80,6 +102,11 @@ class Host {
     'last_seen_at': lastSeenAt.toIso8601String(),
     'connection_count': connectionCount,
     'notes': notes,
+    'auth_method': authMethod.name,
+    'private_key_path': privateKeyPath,
+    'public_key_path': publicKeyPath,
+    'private_key_content': privateKeyContent,
+    'public_key_content': publicKeyContent,
   };
 
   factory Host.fromJson(Map<String, dynamic> json) => Host(
@@ -97,5 +124,11 @@ class Host {
     lastSeenAt: DateTime.parse(json['last_seen_at'] as String),
     connectionCount: json['connection_count'] as int? ?? 0,
     notes: json['notes'] as String?,
+    authMethod: (json['auth_method'] as String?) == 'publicKey'
+        ? SshAuthMethod.publicKey : SshAuthMethod.password,
+    privateKeyPath: json['private_key_path'] as String?,
+    publicKeyPath: json['public_key_path'] as String?,
+    privateKeyContent: json['private_key_content'] as String?,
+    publicKeyContent: json['public_key_content'] as String?,
   );
 }
