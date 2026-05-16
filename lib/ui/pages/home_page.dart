@@ -32,7 +32,7 @@ class _HomePageState extends ConsumerState<HomePage> {
   ScanState _scanState = ScanState.idle;
   int _totalIps = 0;
   int _scannedIps = 0;
-  bool _showScanSettings = true;
+  bool _showScanSettings = false;
   late TextEditingController _cidrCtrl;
   late TextEditingController _portCtrl;
   late TextEditingController _timeoutCtrl;
@@ -233,6 +233,17 @@ class _HomePageState extends ConsumerState<HomePage> {
     return '${appDir.path}/keys';
   }
 
+  void _showToast(BuildContext context, String message) {
+    late final OverlayEntry entry;
+    entry = OverlayEntry(
+      builder: (_) => _ToastWidget(
+        message: message,
+        onRemove: () => entry.remove(),
+      ),
+    );
+    Overlay.of(context, rootOverlay: true).insert(entry);
+  }
+
   Widget _buildKeySection(void Function(void Function()) setSheetState, {
     required String? privateKeyPath,
     required String? publicKeyPath,
@@ -305,9 +316,7 @@ class _HomePageState extends ConsumerState<HomePage> {
           onPublicKeyContent(generated.publicKeyContent);
           onRefresh();
           if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Ed25519 密钥对已生成')),
-            );
+            _showToast(context, 'Ed25519 密钥对已生成');
           }
         },
         icon: const Icon(Icons.vpn_key, size: 18),
@@ -401,8 +410,7 @@ class _HomePageState extends ConsumerState<HomePage> {
       if (content == null) return;
       if (suffix == 'priv' && !KeyService.isValidPrivateKey(content)) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('无效的私钥文件格式')));
+          _showToast(context, '无效的私钥文件格式');
         }
         return;
       }
@@ -413,8 +421,7 @@ class _HomePageState extends ConsumerState<HomePage> {
         if (pubLine != null) onOtherContent(pubLine);
       }
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('文件已复制到内部目录，您可以安全删除外部源文件')));
+        _showToast(context, '文件已复制到内部目录，您可以安全删除外部源文件');
       }
     }
   }
@@ -441,9 +448,7 @@ class _HomePageState extends ConsumerState<HomePage> {
               if (outDir != null) {
                 final ok = await KeyService.exportPublicKey(exportPath, '$outDir/${exportPath.split('/').last}');
                 if (ctx.mounted) {
-                  ScaffoldMessenger.of(ctx).showSnackBar(
-                    SnackBar(content: Text(ok ? '公钥已导出到 $outDir' : '导出失败')),
-                  );
+                  _showToast(ctx, ok ? '公钥已导出到 $outDir' : '导出失败');
                 }
               }
             }, child: const Text('导出')),
@@ -491,15 +496,11 @@ class _HomePageState extends ConsumerState<HomePage> {
                 );
                 if (!mounted) return;
                 Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('公钥已上传到主机')),
-                );
+                _showToast(context, '公钥已上传到主机');
               } catch (e) {
                 if (!mounted) return;
                 Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('上传失败: $e')),
-                );
+                _showToast(context, '上传失败: $e');
               }
             }, child: const Text('上传')),
           ],
@@ -616,11 +617,11 @@ class _HomePageState extends ConsumerState<HomePage> {
             FilledButton(onPressed: () async {
               if (!(formKey.currentState?.validate() ?? false)) return;
               if (authMethod == SshAuthMethod.password && passCtrl.text.isEmpty) {
-                ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('密码认证需填写密码')));
+                _showToast(ctx, '密码认证需填写密码');
                 return;
               }
               if (authMethod == SshAuthMethod.publicKey && privateKeyContent == null) {
-                ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('公钥认证需选择或生成密钥')));
+                _showToast(ctx, '公钥认证需选择或生成密钥');
                 return;
               }
               final dao = await ref.read(hostDaoProvider.future);
@@ -1011,11 +1012,11 @@ class _HomePageState extends ConsumerState<HomePage> {
             FilledButton(onPressed: () async {
               if (!(formKey.currentState?.validate() ?? false)) return;
               if (authMethod == SshAuthMethod.password && passCtrl.text.isEmpty) {
-                ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('密码认证需填写密码')));
+                _showToast(ctx, '密码认证需填写密码');
                 return;
               }
               if (authMethod == SshAuthMethod.publicKey && privateKeyContent == null) {
-                ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('公钥认证需选择或生成密钥')));
+                _showToast(ctx, '公钥认证需选择或生成密钥');
                 return;
               }
               final dao = await ref.read(hostDaoProvider.future);
@@ -1134,11 +1135,11 @@ class _HomePageState extends ConsumerState<HomePage> {
             FilledButton(onPressed: () async {
               if (!(formKey.currentState?.validate() ?? false)) return;
               if (authMethod == SshAuthMethod.password && passCtrl.text.isEmpty) {
-                ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('密码认证需填写密码')));
+                _showToast(ctx, '密码认证需填写密码');
                 return;
               }
               if (authMethod == SshAuthMethod.publicKey && privateKeyContent == null) {
-                ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('公钥认证需选择或生成密钥')));
+                _showToast(ctx, '公钥认证需选择或生成密钥');
                 return;
               }
               final ip = ipCtrl.text.trim();
@@ -1281,6 +1282,82 @@ class _ScanResultCard extends StatelessWidget {
               child: Icon(Icons.close, size: 16, color: Colors.grey[400]),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ToastWidget extends StatefulWidget {
+  final String message;
+  final VoidCallback onRemove;
+  const _ToastWidget({required this.message, required this.onRemove});
+
+  @override
+  State<_ToastWidget> createState() => _ToastWidgetState();
+}
+
+class _ToastWidgetState extends State<_ToastWidget>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final Animation<Offset> _slideAnim;
+  late final Animation<double> _fadeAnim;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 200),
+    );
+    final curve = CurvedAnimation(parent: _controller, curve: Curves.easeOut);
+    _slideAnim =
+        Tween<Offset>(begin: const Offset(0, 1), end: Offset.zero).animate(curve);
+    _fadeAnim = Tween<double>(begin: 0, end: 1).animate(curve);
+    _controller.addStatusListener((status) {
+      if (status == AnimationStatus.completed) {
+        Future.delayed(const Duration(milliseconds: 600), () {
+          if (mounted) _controller.reverse();
+        });
+      } else if (status == AnimationStatus.dismissed) {
+        widget.onRemove();
+      }
+    });
+    _controller.forward();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomPadding = MediaQuery.of(context).viewPadding.bottom;
+    return Positioned(
+      bottom: 0,
+      left: 0,
+      right: 0,
+      child: SlideTransition(
+        position: _slideAnim,
+        child: FadeTransition(
+          opacity: _fadeAnim,
+          child: Material(
+            color: Colors.black,
+            child: Padding(
+              padding: EdgeInsets.only(top: 12, bottom: 12 + bottomPadding),
+              child: Text(
+                widget.message,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 14,
+                  decoration: TextDecoration.none,
+                ),
+              ),
+            ),
+          ),
         ),
       ),
     );
