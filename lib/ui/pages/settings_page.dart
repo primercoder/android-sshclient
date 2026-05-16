@@ -1,9 +1,33 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:ssh_client/providers/providers.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class SettingsPage extends ConsumerWidget {
   const SettingsPage({super.key});
+
+  static const _repoUrl = 'https://github.com/primercoder/android-sshclient';
+  static const _licenseText = '''MIT License
+
+Copyright (c) 2025 primercoder
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.''';
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -68,17 +92,45 @@ class SettingsPage extends ConsumerWidget {
                 ListTile(
                   leading: const Icon(Icons.info),
                   title: const Text('版本'),
-                  trailing: const Text('1.0.0'),
+                  trailing: const Text('1.0.1'),
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.description),
+                  title: const Text('开源协议'),
+                  subtitle: const Text('MIT License'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => showLicenseDialog(context),
                 ),
                 const Divider(height: 1),
                 ListTile(
                   leading: const Icon(Icons.code),
-                  title: const Text('技术栈'),
-                  subtitle: const Text('Flutter + dartssh2 + SQLite'),
+                  title: const Text('GitHub'),
+                  subtitle: const Text('github.com/primercoder/android-sshclient'),
+                  trailing: const Icon(Icons.open_in_new),
+                  onTap: () => launchUrl(Uri.parse(_repoUrl), mode: LaunchMode.externalApplication),
                 ),
               ],
             ),
           ),
+        ],
+      ),
+    );
+  }
+
+  void showLicenseDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('MIT License'),
+        content: SingleChildScrollView(
+          child: SelectableText(
+            _licenseText,
+            style: const TextStyle(fontSize: 12, fontFamily: 'monospace'),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('关闭')),
         ],
       ),
     );
