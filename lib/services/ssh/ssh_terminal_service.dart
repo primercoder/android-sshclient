@@ -11,6 +11,8 @@ class SshTerminalService {
   StreamSubscription? _stderrSub;
   bool _disposed = false;
 
+  void Function()? onSessionEnd;
+
   bool get isActive => _session != null && !_disposed;
 
   Future<void> start(SSHClient client, Terminal terminal) async {
@@ -44,6 +46,9 @@ class SshTerminalService {
             if (!_disposed) terminal.write(data);
           },
           onError: (_) {},
+          onDone: () {
+            if (!_disposed) onSessionEnd?.call();
+          },
           cancelOnError: false,
         );
 

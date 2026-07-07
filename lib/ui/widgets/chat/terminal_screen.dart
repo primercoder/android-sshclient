@@ -22,6 +22,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
   double _btnRight = 16;
   double _btnBottom = 80;
   bool _started = false;
+  bool _sessionEnded = false;
 
   @override
   void initState() {
@@ -35,6 +36,9 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
     final sshClient = ref.read(sshClientServiceProvider).client;
     if (sshClient == null) return;
     try {
+      _service.onSessionEnd = () {
+        if (mounted) setState(() => _sessionEnded = true);
+      };
       await _service.start(sshClient, _terminal);
       if (mounted) setState(() => _started = true);
     } catch (_) {}
@@ -100,6 +104,32 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
                   const CircularProgressIndicator(),
                   const SizedBox(height: 16),
                   Text('正在启动终端...', style: theme.textTheme.bodyMedium),
+                ],
+              ),
+            ),
+          ),
+        if (_sessionEnded)
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              color: theme.colorScheme.errorContainer.withValues(alpha: 0.95),
+              child: Row(
+                children: [
+                  Icon(Icons.info_outline, size: 18, color: theme.colorScheme.onErrorContainer),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      '会话已结束',
+                      style: TextStyle(color: theme.colorScheme.onErrorContainer),
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: widget.onExit,
+                    child: Text('返回', style: TextStyle(color: theme.colorScheme.onErrorContainer)),
+                  ),
                 ],
               ),
             ),

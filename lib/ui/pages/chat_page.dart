@@ -456,6 +456,21 @@ class _ChatPageState extends ConsumerState<ChatPage> {
 
   void _exitTerminalMode() {
     setState(() => _inTerminalMode = false);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _checkSshAfterTerminal());
+  }
+
+  Future<void> _checkSshAfterTerminal() async {
+    final sshService = ref.read(sshClientServiceProvider);
+    final chat = ref.read(chatProvider.notifier);
+    try {
+      await sshService.execute('echo alive');
+    } catch (_) {
+      if (!mounted) return;
+      chat.addSystemMessage('SSH 会话已结束');
+      chat.endSession(hostId);
+      ref.read(sshConnectionProvider.notifier).reset();
+      Navigator.of(context).pop();
+    }
   }
 
   Future<bool> _onWillPop() async {
