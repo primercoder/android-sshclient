@@ -9,7 +9,8 @@ Flutter Android SSH client — chat-style session management, SCP file transfer,
 | `flutter pub get` | install dependencies |
 | `flutter analyze` | static analysis (uses `flutter_lints`) |
 | `flutter test` | run tests |
-| `flutter build apk --release` | release APK |
+| `flutter build apk --release --dart-define=source=process` | release APK (sqlite3 process hook) |
+| `flutter build apk --debug --dart-define=source=process` | debug APK |
 | `flutter run` | run on connected device/emulator |
 
 Tests: `test/widget_test.dart` — placeholder smoke test only.
