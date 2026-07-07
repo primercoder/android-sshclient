@@ -15,6 +15,9 @@ dependencies:
   # SSH
   dartssh2: ^2.9.0
 
+  # 终端仿真
+  xterm: ^4.0.0
+
   # 密钥生成
   pinenacl: ^0.6.0
 

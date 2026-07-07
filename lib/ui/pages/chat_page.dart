@@ -8,6 +8,7 @@ import 'package:ssh_client/providers/chat_provider.dart';
 import 'package:ssh_client/providers/ssh_connection_provider.dart';
 import 'package:ssh_client/providers/providers.dart';
 import 'package:ssh_client/ui/widgets/chat/chat_bubble.dart';
+import 'package:ssh_client/ui/widgets/chat/terminal_screen.dart';
 import 'package:ssh_client/ui/widgets/chat/chat_input_bar.dart';
 import 'package:ssh_client/ui/widgets/chat/chat_file_panel.dart';
 import 'package:ssh_client/ui/widgets/chat/chat_path_indicator.dart';
@@ -40,6 +41,9 @@ class _ChatPageState extends ConsumerState<ChatPage> {
   String _errorMsg = '';
   int _prevMsgCount = 0;
   List<QuickCommand> _quickCommands = [];
+  bool _inTerminalMode = false;
+  double _terminalBtnRight = 16;
+  double _terminalBtnBottom = 140;
 
   String get hostId {
     if (widget.host != null) return widget.host!.hostId;
@@ -445,6 +449,15 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     _sendCommand(text);
   }
 
+  void _enterTerminalMode() {
+    ref.read(chatProvider.notifier).addSystemMessage('已进入终端模式');
+    setState(() => _inTerminalMode = true);
+  }
+
+  void _exitTerminalMode() {
+    setState(() => _inTerminalMode = false);
+  }
+
   Future<bool> _onWillPop() async {
     if (_connected && !widget.readOnly) {
       final result = await showDialog<String>(
@@ -495,6 +508,10 @@ class _ChatPageState extends ConsumerState<ChatPage> {
       canPop: false,
       onPopInvokedWithResult: (didPop, _) async {
         if (didPop) return;
+        if (_inTerminalMode) {
+          _exitTerminalMode();
+          return;
+        }
         final shouldPop = await _onWillPop();
         if (shouldPop && context.mounted) {
           Navigator.pop(context);
@@ -532,80 +549,105 @@ class _ChatPageState extends ConsumerState<ChatPage> {
               ),
           ],
         ),
-        body: Column(
-          children: [
-            if (!widget.readOnly && _connected) ChatPathIndicator(onExecute: _executeWrapped),
-
-            Expanded(
-              child: GestureDetector(
-                onTap: () => _inputFocus.unfocus(),
-                child: chatState.messages.isEmpty && !_error
-                  ? Center(
-                      child: Text(_connected ? '等待输入命令...' : '连接中...',
-                          style: theme.textTheme.bodyLarge?.copyWith(color: Colors.grey)),
-                    )
-                  : ListView.builder(
-                      controller: _scrollController,
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                      itemCount: chatState.messages.length,
-                      itemBuilder: (context, index) {
-                        final msg = chatState.messages[index];
-                        if (msg.type == MessageType.fileTransfer) {
-                          return TransferBubble(message: msg);
-                        }
-                        return ChatBubble(message: msg);
-                      },
-                    ),
-            ),
-            ),
-
-            if (_error)
-              Container(
-                padding: const EdgeInsets.all(16),
-                color: theme.colorScheme.errorContainer,
-                child: Column(children: [
-                  Text(_errorMsg, style: TextStyle(color: theme.colorScheme.onErrorContainer)),
-                  const SizedBox(height: 8),
-                  FilledButton.tonal(onPressed: () => Navigator.pop(context), child: const Text('返回重试')),
-                ]),
-              ),
-
-            if (!widget.readOnly && _connected) ChatSuggestionChips(
-              commands: _quickCommands,
-              onSelected: _appendCommand,
-              onManage: _showManageSheet,
-            ),
-
-            if (!widget.readOnly && _connected && _showFilePanel && widget.host != null)
-              ChatFilePanel(
-                host: widget.host!,
-                sessionId: chatState.currentSession?.sessionId ?? '',
-                currentDirectory: chatState.currentDirectory,
-              ),
-
-            if (widget.readOnly)
-              Container(
-                padding: const EdgeInsets.all(12),
-                color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
+        body: _inTerminalMode
+          ? TerminalScreen(onExit: _exitTerminalMode)
+          : Stack(
+              children: [
+                Column(
                   children: [
-                    Icon(Icons.lock, size: 16, color: Colors.grey),
-                    const SizedBox(width: 6),
-                    Text('只读模式 — 历史会话回放',
-                        style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey)),
+                    if (!widget.readOnly && _connected) ChatPathIndicator(onExecute: _executeWrapped),
+
+                    Expanded(
+                      child: GestureDetector(
+                        onTap: () => _inputFocus.unfocus(),
+                        child: chatState.messages.isEmpty && !_error
+                          ? Center(
+                              child: Text(_connected ? '等待输入命令...' : '连接中...',
+                                  style: theme.textTheme.bodyLarge?.copyWith(color: Colors.grey)),
+                            )
+                          : ListView.builder(
+                              controller: _scrollController,
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                              itemCount: chatState.messages.length,
+                              itemBuilder: (context, index) {
+                                final msg = chatState.messages[index];
+                                if (msg.type == MessageType.fileTransfer) {
+                                  return TransferBubble(message: msg);
+                                }
+                                return ChatBubble(message: msg);
+                              },
+                            ),
+                      ),
+                    ),
+
+                    if (_error)
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        color: theme.colorScheme.errorContainer,
+                        child: Column(children: [
+                          Text(_errorMsg, style: TextStyle(color: theme.colorScheme.onErrorContainer)),
+                          const SizedBox(height: 8),
+                          FilledButton.tonal(onPressed: () => Navigator.pop(context), child: const Text('返回重试')),
+                        ]),
+                      ),
+
+                    if (!widget.readOnly && _connected) ChatSuggestionChips(
+                      commands: _quickCommands,
+                      onSelected: _appendCommand,
+                      onManage: _showManageSheet,
+                    ),
+
+                    if (!widget.readOnly && _connected && _showFilePanel && widget.host != null)
+                      ChatFilePanel(
+                        host: widget.host!,
+                        sessionId: chatState.currentSession?.sessionId ?? '',
+                        currentDirectory: chatState.currentDirectory,
+                      ),
+
+                    if (widget.readOnly)
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.lock, size: 16, color: Colors.grey),
+                            const SizedBox(width: 6),
+                            Text('只读模式 — 历史会话回放',
+                                style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey)),
+                          ],
+                        ),
+                      )
+                    else if (!_error)
+                      ChatInputBar(
+                        controller: _inputController,
+                        focusNode: _inputFocus,
+                        onSend: _connected ? _sendMessage : null,
+                        onFileTap: () => setState(() => _showFilePanel = !_showFilePanel),
+                      ),
                   ],
                 ),
-              )
-            else if (!_error)
-              ChatInputBar(
-                controller: _inputController,
-                focusNode: _inputFocus,
-                onSend: _connected ? _sendMessage : null,
-                onFileTap: () => setState(() => _showFilePanel = !_showFilePanel),
-              ),
-          ],
-        ),
+                if (_connected)
+                  Positioned(
+                    right: _terminalBtnRight,
+                    bottom: _terminalBtnBottom,
+                    child: GestureDetector(
+                      onPanUpdate: (details) {
+                        setState(() {
+                          _terminalBtnRight -= details.delta.dx;
+                          _terminalBtnBottom -= details.delta.dy;
+                        });
+                      },
+                      child: FloatingActionButton.small(
+                        heroTag: 'terminal_enter',
+                        onPressed: _enterTerminalMode,
+                        backgroundColor: theme.colorScheme.primary,
+                        child: const Icon(Icons.terminal),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
       ),
     );
   }
